@@ -77,7 +77,11 @@ jobs:
           MAILTRAP_INBOX_ID: ${{ secrets.MAILTRAP_INBOX_ID }}
         run: |
           cd frontend
-          npx playwright test
+          if [ -n "$MAILTRAP_API_TOKEN" ] && [ -n "$MAILTRAP_INBOX_ID" ]; then
+            npx playwright test
+          else
+            npx playwright test --grep-invert "Verify successful signup with valid credentials and OTP verification"
+          fi
 
       - name: Print Server Logs on Failure
         if: failure()
