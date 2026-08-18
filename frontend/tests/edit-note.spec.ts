@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('test', async ({ page }) => {
+test('Verify note editing functionality works correctly', async ({ page }) => {
     // Navigate to the application
   await page.goto('/');
 

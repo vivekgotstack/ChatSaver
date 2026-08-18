@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('test', async ({ page }) => {
+test('Verify note search functionality works correctly', async ({ page }) => {
     // Navigate to the application and import a shared ChatGPT chat, then save it as an editable note
 
   await page.goto('/');

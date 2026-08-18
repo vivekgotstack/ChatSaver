@@ -2,7 +2,6 @@ import { test, expect, APIRequestContext } from '@playwright/test';
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Forcefully load .env.local from project root
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
 interface MailtrapMessage {
@@ -169,5 +168,79 @@ test.describe('Signup & Auth Suite', () => {
     await expect(page.getByText(/chats|vault|library/i).first()).toBeVisible({ timeout: 30000 });
     console.log('Signup and OTP verification successful!');
   });
+
+
+  // NEGATIVE TEST 1: Invalid Email Format
+  test('Verify signup validation fails and blocks submission when entering an invalid email format', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    const openModalBtn = page.getByRole('button', { name: /sign in.*sign up/i }).first();
+    await expect(openModalBtn).toBeVisible({ timeout: 15000 });
+    await openModalBtn.click();
+
+    const signUpTab = page.getByRole('button', { name: /^sign up$/i }).first();
+    await expect(signUpTab).toBeVisible({ timeout: 10000 });
+    await signUpTab.click();
+
+    const nameInput = page.getByRole('textbox', { name: /display name/i }).or(page.getByPlaceholder(/display name/i)).first();
+    await expect(nameInput).toBeVisible({ timeout: 10000 });
+    await nameInput.fill('Invalid Email User');
+
+    const emailInput = page.getByRole('textbox', { name: /email/i }).or(page.getByPlaceholder(/email/i)).first();
+    await expect(emailInput).toBeVisible({ timeout: 10000 });
+    
+    await emailInput.fill('plainaddress_without_at_symbol');
+
+    const passwordInput = page.getByRole('textbox', { name: /password/i }).or(page.getByPlaceholder(/password/i)).first();
+    await expect(passwordInput).toBeVisible({ timeout: 10000 });
+    await passwordInput.fill('password123456789');
+
+    const submitBtn = page.getByRole('button', { name: /email me a code/i }).first();
+    await expect(submitBtn).toBeVisible({ timeout: 10000 });
+    await submitBtn.click();
+
+    // Assertion 1: HTML5 Native validation triggers (Field marked invalid)
+    const isInvalid = await emailInput.evaluate((el: HTMLInputElement) => !el.checkValidity());
+    expect(isInvalid).toBe(true);
+
+    // Assertion 2: Form submit button stays on screen (No navigation / No OTP screen)
+    await expect(submitBtn).toBeVisible({ timeout: 3000 });
+    await expect(nameInput).toBeVisible();
+  });
+
+  // NEGATIVE TEST 2: Short Password (< 12 characters)
+  test('Verify signup is blocked and triggers validation error when entering a password under minimum length requirements', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    const openModalBtn = page.getByRole('button', { name: /sign in.*sign up/i }).first();
+    await expect(openModalBtn).toBeVisible({ timeout: 15000 });
+    await openModalBtn.click();
+
+    const signUpTab = page.getByRole('button', { name: /^sign up$/i }).first();
+    await expect(signUpTab).toBeVisible({ timeout: 10000 });
+    await signUpTab.click();
+
+    const nameInput = page.getByRole('textbox', { name: /display name/i }).or(page.getByPlaceholder(/display name/i)).first();
+    await expect(nameInput).toBeVisible({ timeout: 10000 });
+    await nameInput.fill('Short Pass User');
+
+    const emailInput = page.getByRole('textbox', { name: /email/i }).or(page.getByPlaceholder(/email/i)).first();
+    await expect(emailInput).toBeVisible({ timeout: 10000 });
+    await emailInput.fill(`shortpass_${Date.now()}@inbox.mailtrap.io`);
+
+    const passwordInput = page.getByRole('textbox', { name: /password/i }).or(page.getByPlaceholder(/password/i)).first();
+    await expect(passwordInput).toBeVisible({ timeout: 10000 });
+    await passwordInput.fill('12345'); // Under 12 characters
+
+    const submitBtn = page.getByRole('button', { name: /email me a code/i }).first();
+    await expect(submitBtn).toBeVisible({ timeout: 10000 });
+    await submitBtn.click();
+
+    // Assertion: Form does not proceed to OTP screen
+    await expect(submitBtn).toBeVisible({ timeout: 3000 });
+    const otpInput = page.getByRole('textbox', { name: /otp|code|verification/i });
+    await expect(otpInput).not.toBeVisible();
+  });
+
 
 });

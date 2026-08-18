@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('import ChatGPT shared chat and save as editable note', async ({ page }) => {
+test('Verify import ChatGPT shared chat and save as editable note functionality works correctly', async ({ page }) => {
   await page.goto('/');
 
   await page.getByRole('button', { name: 'Import ChatGPT chats' }).click();

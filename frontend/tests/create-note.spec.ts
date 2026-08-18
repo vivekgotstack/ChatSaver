@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('test', async ({ page }) => {
+test('Verify note creation functionality works correctly', async ({ page }) => {
     await page.goto('/');
 
     await page.getByRole('button', { name: 'Import ChatGPT chats' }).click();
