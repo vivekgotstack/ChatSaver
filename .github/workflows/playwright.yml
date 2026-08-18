@@ -46,6 +46,10 @@ jobs:
           SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/chatsaver
           SPRING_DATASOURCE_USERNAME: postgres
           SPRING_DATASOURCE_PASSWORD: password
+          SMTP_HOST: localhost
+          SMTP_PORT: 1025
+          SMTP_USER: ci
+          SMTP_PASS: ci
         run: |
           cd backend
           mvn clean package -DskipTests
