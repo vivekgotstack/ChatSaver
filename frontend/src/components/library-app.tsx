@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDeferredValue, useEffect, useEffectEvent, useRef, useState } from "react";
 import {
+  AlertTriangle,
   Archive,
   ArrowRight,
   BookOpenText,
@@ -20,6 +21,7 @@ import {
   LoaderCircle,
   Menu,
   Plus,
+  RotateCcw,
   Search,
   Settings2,
   ShieldCheck,
@@ -164,6 +166,34 @@ function LibraryLoading() {
         </main>
       </div>
     </div>
+  );
+}
+
+function LibraryUnavailable({ detail }: { detail: string }) {
+  return (
+    <main className="relative grid min-h-dvh place-items-center overflow-hidden p-6">
+      <div className="paint-backdrop" aria-hidden="true" />
+      <div className="oil-grain" aria-hidden="true" />
+      <section
+        className="app-surface relative z-10 w-full max-w-lg rounded-3xl border border-white/10 p-8 text-center"
+        role="alert"
+      >
+        <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-destructive/12 text-destructive">
+          <AlertTriangle />
+        </span>
+        <h1 className="mt-5 text-2xl font-semibold tracking-[-0.035em]">
+          Your local vault could not open.
+        </h1>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          {detail} Your data has not been cleared. Close other ChatSaver tabs, allow site storage,
+          then try again.
+        </p>
+        <Button className="royal-glow mt-6" onClick={() => window.location.reload()}>
+          <RotateCcw />
+          Retry ChatSaver
+        </Button>
+      </section>
+    </main>
   );
 }
 
@@ -369,20 +399,14 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
   const [isMobileLibraryOpen, setIsMobileLibraryOpen] = useState(false);
   const [session, setSession] = useState<AuthSession>();
   const [vaultKey, setVaultKey] = useState(() => db.name);
+  const [databaseState, setDatabaseState] = useState<
+    { status: "loading" | "ready" } | { status: "error"; detail: string }
+  >({ status: "loading" });
   const [syncState, setSyncState] = useState<"idle" | "syncing" | "synced" | "error">("idle");
   const [realtimeState, setRealtimeState] = useState<"offline" | "connecting" | "connected">("offline");
   const syncInFlight = useRef(false);
   const syncQueued = useRef(false);
   const deferredQuery = useDeferredValue(query);
-  const isDatabaseReady = useLiveQuery(
-    async () => {
-      await db.notes.count();
-      return true;
-    },
-    [vaultKey],
-    false,
-  );
-
   const notesPage = useLiveQuery(
     () =>
       queryNotesPage({
@@ -438,6 +462,44 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
     void runSync(currentSession, announce);
   });
 
+  function changeVault(nextVaultKey: string) {
+    setDatabaseState({ status: "loading" });
+    setVaultKey(nextVaultKey);
+  }
+
+  useEffect(() => {
+    let active = true;
+    const timeout = window.setTimeout(() => {
+      if (active) {
+        setDatabaseState({
+          status: "error",
+          detail: "The browser did not finish opening its local database.",
+        });
+      }
+    }, 8_000);
+
+    void db.notes
+      .count()
+      .then(() => {
+        if (active) setDatabaseState({ status: "ready" });
+      })
+      .catch((error: unknown) => {
+        console.error("IndexedDB initialization failed", error);
+        if (active) {
+          setDatabaseState({
+            status: "error",
+            detail: "The browser could not access its local database.",
+          });
+        }
+      })
+      .finally(() => window.clearTimeout(timeout));
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [vaultKey]);
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "k") {
@@ -454,7 +516,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
     void refreshAccount()
       .then((restored) => {
         if (!active) return;
-        setVaultKey(restoreAccountVault(restored.user.id));
+        changeVault(restoreAccountVault(restored.user.id));
         setSelectedNoteId(undefined);
         setSession(restored);
         requestSync(restored, false);
@@ -601,7 +663,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
 
   async function authenticated(authenticatedSession: AuthSession) {
     const shouldOpenHistory = !historyView && await db.notes.count() === 0;
-    setVaultKey(beginAccountVault(authenticatedSession.user.id));
+    changeVault(beginAccountVault(authenticatedSession.user.id));
     setSelectedNoteId(undefined);
     setSession(authenticatedSession);
     setIsAccountOpen(false);
@@ -613,7 +675,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
   }
 
   function loggedOut() {
-    setVaultKey(endAccountVault());
+    changeVault(endAccountVault());
     setSelectedNoteId(undefined);
     setSession(undefined);
     setSyncState("idle");
@@ -666,7 +728,10 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
     onCreate: () => void createNote(),
   };
 
-  if (!isDatabaseReady) return <LibraryLoading />;
+  if (databaseState.status === "loading") return <LibraryLoading />;
+  if (databaseState.status === "error") {
+    return <LibraryUnavailable detail={databaseState.detail} />;
+  }
 
   if (totalNotes === 0 && !historyView) {
     return (
