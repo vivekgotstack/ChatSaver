@@ -1,6 +1,8 @@
 spring:
   application:
     name: chatsaver-api
+  config:
+    import: optional:file:.env[.properties]
   datasource:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/ChatSaver}
     username: ${DATABASE_USERNAME:chatsaver_app}
@@ -27,6 +29,20 @@ spring:
   mvc:
     problemdetails:
       enabled: true
+  mail:
+    host: ${SMTP_HOST}
+    port: ${SMTP_PORT}
+    username: ${SMTP_USER}
+    password: ${SMTP_PASS}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          connectiontimeout: 8000
+          timeout: 15000
+          writetimeout: 15000
 
 server:
   port: ${PORT:8080}
@@ -60,9 +76,8 @@ chatsaver:
     refresh-token-days: ${REFRESH_TOKEN_DAYS:30}
     secure-cookies: ${SECURE_COOKIES:true}
   email:
-    brevo-api-key: ${BREVO_API_KEY:}
-    sender-email: ${BREVO_SENDER_EMAIL:}
-    sender-name: ${BREVO_SENDER_NAME:ChatSaver}
+    sender-email: no-reply@chatsaver.local
+    sender-name: ChatSaver
 
 ---
 spring:

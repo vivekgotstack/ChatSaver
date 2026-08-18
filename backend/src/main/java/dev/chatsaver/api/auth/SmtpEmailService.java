@@ -1,95 +1,55 @@
 package dev.chatsaver.api.auth;
 
-import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
-import java.util.Map;
+import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.mail.MailException;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 
 @Service
-class BrevoEmailService {
+class SmtpEmailService {
 
-    private static final URI BREVO_EMAIL_ENDPOINT = URI.create("https://api.brevo.com/v3/smtp/email");
-
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(8))
-            .build();
-    private final ObjectMapper objectMapper;
-    private final String apiKey;
+    private final JavaMailSender mailSender;
     private final String senderEmail;
     private final String senderName;
     private final String logoUrl;
 
-    BrevoEmailService(
-            ObjectMapper objectMapper,
-            @Value("${chatsaver.email.brevo-api-key:}") String apiKey,
-            @Value("${chatsaver.email.sender-email:}") String senderEmail,
-            @Value("${chatsaver.email.sender-name:ChatSaver}") String senderName,
+    SmtpEmailService(
+            JavaMailSender mailSender,
+            @Value("${chatsaver.email.sender-email}") String senderEmail,
+            @Value("${chatsaver.email.sender-name}") String senderName,
             @Value("${chatsaver.web-origin}") String webOrigin) {
-        this.objectMapper = objectMapper;
-        this.apiKey = apiKey.trim();
+        this.mailSender = mailSender;
         this.senderEmail = senderEmail.trim();
         this.senderName = senderName.trim();
         this.logoUrl = webOrigin.replaceAll("/$", "") + "/cs-transparent.png";
     }
 
     void sendVerificationCode(String recipientEmail, String displayName, String code) {
-        if (apiKey.isBlank() || senderEmail.isBlank()) {
-            throw new ResponseStatusException(
-                    HttpStatus.SERVICE_UNAVAILABLE,
-                    "Email verification is not configured yet.");
-        }
-
         String greeting = displayName == null || displayName.isBlank()
                 ? "Welcome to ChatSaver"
                 : "Welcome, " + escapeHtml(displayName.trim());
-        Map<String, Object> payload = Map.of(
-                "sender", Map.of("name", senderName, "email", senderEmail),
-                "to", new Object[] { Map.of("email", recipientEmail) },
-                "subject", code + " is your ChatSaver verification code",
-                "htmlContent", html(greeting, code),
-                "tags", new String[] { "chatsaver-signup-verification" });
-
-        HttpRequest request;
-        try {
-            request = HttpRequest.newBuilder(BREVO_EMAIL_ENDPOINT)
-                    .timeout(Duration.ofSeconds(15))
-                    .header("accept", "application/json")
-                    .header("api-key", apiKey)
-                    .header("content-type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
-                    .build();
-        } catch (JacksonException exception) {
-            throw new IllegalStateException("Could not prepare the verification email.", exception);
-        }
+        MimeMessage message = mailSender.createMimeMessage();
 
         try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new ResponseStatusException(
-                        HttpStatus.BAD_GATEWAY,
-                        "Brevo could not send the verification email.");
-            }
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
+            MimeMessageHelper helper = new MimeMessageHelper(message, StandardCharsets.UTF_8.name());
+            helper.setFrom(senderEmail, senderName);
+            helper.setTo(recipientEmail);
+            helper.setSubject(code + " is your ChatSaver verification code");
+            helper.setText(html(greeting, code), true);
+            mailSender.send(message);
+        } catch (MessagingException | UnsupportedEncodingException | MailException exception) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_GATEWAY,
-                    "Verification email delivery was interrupted.",
-                    exception);
-        } catch (IOException exception) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_GATEWAY,
-                    "Brevo could not be reached to send the verification email.",
+                    "SMTP could not send the verification email.",
                     exception);
         }
     }
