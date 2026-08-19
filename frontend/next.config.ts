@@ -15,6 +15,14 @@ const nextConfig: NextConfig = {
           const apiOrigin = (process.env.API_ORIGIN ?? "http://localhost:8080").replace(/\/$/, "");
           return [
             {
+              source: "/downloads/ChatSaver.exe",
+              destination: "/api/downloads/ChatSaver.exe",
+            },
+            {
+              source: "/downloads/ChatSaver.dmg",
+              destination: "/api/downloads/ChatSaver.dmg",
+            },
+            {
               source: "/api/v1/:path*",
               destination: `${apiOrigin}/api/v1/:path*`,
             },
