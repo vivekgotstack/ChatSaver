@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  publish:
+  build:
     strategy:
       fail-fast: false
       matrix:
@@ -45,14 +45,38 @@ jobs:
         run: npm ci
 
       - name: Build and publish desktop installer
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: frontend
+        run: npm run tauri -- build ${{ matrix.args }}
+
+      - name: Prepare Windows download
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Copy-Item frontend/src-tauri/target/release/bundle/nsis/*-setup.exe ChatSaver.exe
+
+      - name: Prepare macOS download
+        if: runner.os == 'macOS'
+        run: cp frontend/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg ChatSaver.dmg
+
+      - uses: actions/upload-artifact@v4
         with:
-          projectPath: frontend
-          tagName: desktop-v__VERSION__
-          releaseName: ChatSaver Desktop v__VERSION__
-          releaseBody: Direct installers for Windows and macOS. No developer tools are required.
-          releaseDraft: false
-          prerelease: false
-          args: ${{ matrix.args }}
+          name: desktop-${{ runner.os }}
+          path: ChatSaver.*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish direct downloads
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ChatSaver Desktop v0.1.0
+          body: Direct installers for Windows and macOS. No developer tools are required.
+          files: release-assets/*
+          fail_on_unmatched_files: true

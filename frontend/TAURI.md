@@ -30,8 +30,8 @@ deployed backend origin when live vault updates are required.
 The website shows an install button only on Windows and macOS desktop-class devices. By default,
 it downloads the matching installer from the latest GitHub release:
 
-- `ChatSaver_0.1.0_x64-setup.exe`
-- `ChatSaver_0.1.0_universal.dmg`
+- `ChatSaver.exe`
+- `ChatSaver.dmg`
 
 Pushing a `desktop-v*` tag runs `.github/workflows/desktop-release.yml` and publishes both files.
 Set `NEXT_PUBLIC_WINDOWS_DOWNLOAD_URL` and `NEXT_PUBLIC_MACOS_DOWNLOAD_URL` only when using a
