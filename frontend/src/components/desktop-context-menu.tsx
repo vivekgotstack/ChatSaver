@@ -44,6 +44,7 @@ export function DesktopContextMenu() {
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
+    document.documentElement.classList.add("tauri-runtime");
 
     function openMenu(event: MouseEvent) {
       const target = event.target as HTMLElement | null;
@@ -72,6 +73,7 @@ export function DesktopContextMenu() {
     window.addEventListener("keydown", closeOnEscape);
     window.addEventListener("blur", closeOnBlur);
     return () => {
+      document.documentElement.classList.remove("tauri-runtime");
       window.removeEventListener("contextmenu", openMenu);
       window.removeEventListener("pointerdown", closeMenu);
       window.removeEventListener("keydown", closeOnEscape);

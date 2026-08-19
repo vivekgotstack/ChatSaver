@@ -193,6 +193,14 @@
     background: transparent;
   }
 
+  .tauri-runtime .editor-hero {
+    scrollbar-width: none;
+  }
+
+  .tauri-runtime .editor-hero::-webkit-scrollbar {
+    display: none;
+  }
+
   .message-vault-window {
     overflow: hidden;
     border: 1px solid oklch(0.95 0.02 78 / 10%);
