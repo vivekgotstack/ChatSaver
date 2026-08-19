@@ -1,9 +1,11 @@
+import { isTauri } from "@tauri-apps/api/core";
+
 const configuredApiRoot = process.env.NEXT_PUBLIC_API_ORIGIN?.trim() ?? "";
 
 export const API_ROOT = configuredApiRoot.replace(/\/$/, "");
 
 export function isTauriRuntime(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  return isTauri();
 }
 
 export async function platformFetch(
