@@ -20,5 +20,9 @@ export async function platformFetch(
   if (!isTauri) return fetch(resolvedInput, init);
 
   const { fetch: nativeFetch } = await import("@tauri-apps/plugin-http");
-  return nativeFetch(resolvedInput, init);
+  const headers = new Headers(init?.headers);
+  // Native requests are not browser CORS requests. Removing Tauri's synthetic
+  // origin lets the existing same-origin web proxy reach the backend normally.
+  headers.set("Origin", "");
+  return nativeFetch(resolvedInput, { ...init, headers });
 }
