@@ -10,7 +10,23 @@ permissions:
   contents: write
 
 jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify desktop release version
+        id: version
+        run: node frontend/scripts/verify-desktop-version.mjs --github-output
+
   build:
+    needs: metadata
     strategy:
       fail-fast: false
       matrix:
@@ -64,7 +80,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: build
+    needs: [metadata, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -76,7 +92,7 @@ jobs:
       - name: Publish direct downloads
         uses: softprops/action-gh-release@v2
         with:
-          name: ChatSaver Desktop v0.1.0
-          body: Direct installers for Windows and macOS. No developer tools are required.
+          name: ChatSaver Desktop v${{ needs.metadata.outputs.version }}
+          body: ChatSaver Desktop v${{ needs.metadata.outputs.version }} installers for Windows and macOS. No developer tools are required.
           files: release-assets/*
           fail_on_unmatched_files: true
