@@ -122,10 +122,10 @@ type DesktopPlatform = "windows" | "macos";
 const DESKTOP_DOWNLOADS: Record<DesktopPlatform, string> = {
   windows:
     process.env.NEXT_PUBLIC_WINDOWS_DOWNLOAD_URL
-    ?? "https://github.com/vivekgotstack/ChatSaver/releases/latest/download/ChatSaver.exe",
+    ?? "https://github.com/vivekgotstack/ChatSaver/releases/download/0.1.3/ChatSaver.exe",
   macos:
     process.env.NEXT_PUBLIC_MACOS_DOWNLOAD_URL
-    ?? "https://github.com/vivekgotstack/ChatSaver/releases/latest/download/ChatSaver.dmg",
+    ?? "https://github.com/vivekgotstack/ChatSaver/releases/download/0.1.3/ChatSaver.dmg",
 };
 
 function DesktopInstallButton({ compact = false }: { compact?: boolean }) {
