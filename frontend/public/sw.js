@@ -1,4 +1,4 @@
-const CACHE_NAME = "chatsaver-shell-v5";
+const CACHE_NAME = "chatsaver-shell-v6";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -30,19 +30,27 @@ self.addEventListener("fetch", (event) => {
 
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request)
-        .then(async (response) => {
-          const copy = response.clone();
-          const cache = await caches.open(CACHE_NAME);
-          await cache.put("/", copy);
+      (async () => {
+        try {
+          const response = await fetch(event.request);
+          if (response.ok) {
+            const cache = await caches.open(CACHE_NAME);
+            await cache.put(event.request, response.clone());
+          }
           return response;
-        })
-        .catch(() => caches.match("/")),
+        } catch {
+          return (await caches.match(event.request)) ?? caches.match("/");
+        }
+      })(),
     );
     return;
   }
 
-  if (!["font", "image", "script", "style"].includes(event.request.destination)) return;
+  // Next.js chunks are content-hashed and already cached safely by the browser.
+  // Keeping them out of the service-worker cache prevents stale deployments
+  // from leaving an already-installed PWA stuck on its server-rendered shell.
+  if (url.pathname.startsWith("/_next/")) return;
+  if (!["font", "image"].includes(event.request.destination)) return;
 
   event.respondWith(
     caches.match(event.request).then(async (cached) => {

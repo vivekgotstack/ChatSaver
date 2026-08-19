@@ -9,9 +9,12 @@ export function ServiceWorkerRegistration() {
 
     if ("serviceWorker" in navigator) {
       if (process.env.NODE_ENV === "production") {
-        navigator.serviceWorker.register("/sw.js").catch((error) => {
-          console.error("Service worker registration failed", error);
-        });
+        navigator.serviceWorker
+          .register("/sw.js", { updateViaCache: "none" })
+          .then((registration) => registration.update())
+          .catch((error) => {
+            console.error("Service worker registration failed", error);
+          });
       } else {
         navigator.serviceWorker
           .getRegistrations()
