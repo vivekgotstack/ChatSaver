@@ -33,8 +33,8 @@ it downloads the matching installer from the latest GitHub release:
 - `ChatSaver.exe`
 - `ChatSaver.dmg`
 
-Every desktop release must increment the version in `package.json`, `src-tauri/Cargo.toml`, and
-`src-tauri/tauri.conf.json`, then use the exact matching tag (for example, `desktop-v0.1.1`). The
-release workflow rejects mismatched tags before building and publishes both installer files.
+Push a plain semantic-version tag such as `0.1.2` to publish a desktop release. The workflow
+passes that tag directly to Tauri, so the Windows and macOS installer metadata always shows the
+release version automatically. Local builds read the fallback version from `package.json`.
 Set `NEXT_PUBLIC_WINDOWS_DOWNLOAD_URL` and `NEXT_PUBLIC_MACOS_DOWNLOAD_URL` only when using a
 different release host.
