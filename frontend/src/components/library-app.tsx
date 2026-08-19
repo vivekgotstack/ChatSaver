@@ -86,6 +86,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SiteFooter } from "@/components/site-footer";
 import { MessageVaultVisual } from "@/components/message-vault-visual";
 import {
+  isVaultRealtimeConfigured,
   openVaultSocket,
   parseVaultSocketMessage,
   refreshAccount,
@@ -539,6 +540,9 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
   });
 
   function changeVault(nextVaultKey: string) {
+    // Re-selecting the current vault must not reset the ready state: the key
+    // dependency would not change, so the database effect could not run again.
+    if (nextVaultKey === vaultKey) return;
     setDatabaseState({ status: "loading" });
     setVaultKey(nextVaultKey);
   }
@@ -618,7 +622,10 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
   }, [session, stats.pending]);
 
   useEffect(() => {
-    if (!session) return;
+    if (!session || !isVaultRealtimeConfigured()) {
+      setRealtimeState("offline");
+      return;
+    }
     const activeSession = session;
     setRealtimeState("connecting");
     let disposed = false;

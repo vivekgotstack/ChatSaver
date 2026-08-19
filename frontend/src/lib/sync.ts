@@ -139,6 +139,12 @@ export function refreshAccount(): Promise<AuthSession> {
   return request("/api/v1/auth/refresh", { method: "POST", body: "{}" });
 }
 
+export function isVaultRealtimeConfigured(): boolean {
+  return process.env.NODE_ENV !== "production"
+    || Boolean(process.env.NEXT_PUBLIC_WEBSOCKET_URL?.trim())
+    || Boolean(API_ROOT);
+}
+
 export function logoutAccount(): Promise<void> {
   return request("/api/v1/auth/logout", { method: "POST", body: "{}" });
 }
