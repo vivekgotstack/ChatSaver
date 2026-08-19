@@ -130,6 +130,7 @@ const DESKTOP_DOWNLOADS: Record<DesktopPlatform, string> = {
 
 function DesktopInstallButton({ compact = false }: { compact?: boolean }) {
   const [platform, setPlatform] = useState<DesktopPlatform>();
+  const [installerReady, setInstallerReady] = useState(false);
 
   useEffect(() => {
     if (isTauriRuntime()) return;
@@ -155,9 +156,32 @@ function DesktopInstallButton({ compact = false }: { compact?: boolean }) {
     return () => desktopMedia.removeEventListener("change", detectPlatform);
   }, []);
 
+  useEffect(() => {
+    if (!platform) return;
+    let active = true;
+    const check = () => {
+      void fetch(DESKTOP_DOWNLOADS[platform], { method: "HEAD", cache: "no-store" })
+        .then((response) => { if (active) setInstallerReady(response.ok); })
+        .catch(() => { if (active) setInstallerReady(false); });
+    };
+    check();
+    const timer = window.setInterval(check, 30_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [platform]);
+
   if (!platform) return null;
 
   const platformLabel = platform === "windows" ? "Windows" : "macOS";
+  if (!installerReady) {
+    return (
+      <Button disabled variant="outline" className={compact ? "h-8 px-2.5 text-[11px]" : "h-9 px-3 text-xs"}>
+        <LoaderCircle className="animate-spin" /> Preparing {platformLabel} app…
+      </Button>
+    );
+  }
   return (
     <Tooltip>
       <TooltipTrigger asChild>

@@ -9,6 +9,26 @@ const FILES = {
   "ChatSaver.dmg": "application/x-apple-diskimage",
 } as const;
 
+async function releaseAsset(file: string, method: "GET" | "HEAD") {
+  return fetch(
+    `https://github.com/vivekgotstack/ChatSaver/releases/download/${RELEASE}/${file}`,
+    { method, cache: "no-store" },
+  );
+}
+
+export async function HEAD(
+  _request: Request,
+  context: { params: Promise<{ file: string }> },
+) {
+  const { file } = await context.params;
+  if (!FILES[file as keyof typeof FILES]) return new NextResponse(null, { status: 404 });
+  const asset = await releaseAsset(file, "HEAD");
+  return new NextResponse(null, {
+    status: asset.ok ? 204 : 503,
+    headers: asset.ok ? undefined : { "Retry-After": "30" },
+  });
+}
+
 export async function GET(
   _request: Request,
   context: { params: Promise<{ file: string }> },
@@ -17,10 +37,7 @@ export async function GET(
   const contentType = FILES[file as keyof typeof FILES];
   if (!contentType) return new NextResponse("Installer not found.", { status: 404 });
 
-  const asset = await fetch(
-    `https://github.com/vivekgotstack/ChatSaver/releases/download/${RELEASE}/${file}`,
-    { cache: "no-store" },
-  );
+  const asset = await releaseAsset(file, "GET");
   if (!asset.ok || !asset.body) {
     return new NextResponse("The new installer is still being prepared. Try again shortly.", {
       status: 503,
