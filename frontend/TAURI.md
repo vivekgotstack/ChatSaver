@@ -24,3 +24,14 @@ npm run desktop:build
 If the origin changes, add the same narrowly scoped URL to
 `src-tauri/capabilities/default.json`. Keep `NEXT_PUBLIC_WEBSOCKET_URL` configured with the
 deployed backend origin when live vault updates are required.
+
+## Website download button
+
+The website shows an install button only on Windows and macOS desktop-class devices. By default,
+it downloads these deployment assets:
+
+- `/downloads/ChatSaver-Windows-Setup.exe`
+- `/downloads/ChatSaver-macOS.dmg`
+
+Upload the signed release installers with those names, or set
+`NEXT_PUBLIC_WINDOWS_DOWNLOAD_URL` and `NEXT_PUBLIC_MACOS_DOWNLOAD_URL` to your release URLs.

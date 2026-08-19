@@ -15,6 +15,7 @@ import {
   Cloud,
   CloudOff,
   Database,
+  Download,
   FilePlus2,
   FolderHeart,
   Import,
@@ -91,6 +92,7 @@ import {
   synchronizeVault,
   type AuthSession,
 } from "@/lib/sync";
+import { isTauriRuntime } from "@/lib/platform-fetch";
 
 const ImportDialog = dynamic(
   () => import("@/components/import-dialog").then((module) => module.ImportDialog),
@@ -109,6 +111,80 @@ const EMPTY_PAGE: NotesPage = {
   totalItems: 0,
   totalPages: 1,
 };
+
+type DesktopPlatform = "windows" | "macos";
+
+const DESKTOP_DOWNLOADS: Record<DesktopPlatform, string> = {
+  windows:
+    process.env.NEXT_PUBLIC_WINDOWS_DOWNLOAD_URL
+    ?? "/downloads/ChatSaver-Windows-Setup.exe",
+  macos:
+    process.env.NEXT_PUBLIC_MACOS_DOWNLOAD_URL
+    ?? "/downloads/ChatSaver-macOS.dmg",
+};
+
+function DesktopInstallButton({ compact = false }: { compact?: boolean }) {
+  const [platform, setPlatform] = useState<DesktopPlatform>();
+
+  useEffect(() => {
+    if (isTauriRuntime()) return;
+
+    const desktopMedia = window.matchMedia(
+      "(min-width: 900px) and (hover: hover) and (pointer: fine)",
+    );
+    const detectPlatform = () => {
+      if (!desktopMedia.matches) {
+        setPlatform(undefined);
+        return;
+      }
+
+      const userAgent = navigator.userAgent;
+      const isIPad = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+      if (/Windows NT/i.test(userAgent)) setPlatform("windows");
+      else if (!isIPad && /Macintosh|Mac OS X/i.test(userAgent)) setPlatform("macos");
+      else setPlatform(undefined);
+    };
+
+    detectPlatform();
+    desktopMedia.addEventListener("change", detectPlatform);
+    return () => desktopMedia.removeEventListener("change", detectPlatform);
+  }, []);
+
+  if (!platform) return null;
+
+  const platformLabel = platform === "windows" ? "Windows" : "macOS";
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          asChild
+          variant="outline"
+          className={`group/install border-primary/30 bg-primary/8 text-white shadow-[0_0_24px_rgba(167,25,47,.08)] backdrop-blur-md hover:border-primary/55 hover:bg-primary/14 ${
+            compact ? "h-8 px-2.5 text-[11px]" : "h-9 px-3 text-xs"
+          }`}
+        >
+          <a href={DESKTOP_DOWNLOADS[platform]} download>
+            <Download className="text-primary transition-transform duration-200 group-hover/install:translate-y-0.5" />
+            Install on {platformLabel}
+          </a>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent
+        side="bottom"
+        align="end"
+        sideOffset={10}
+        className="block w-72 rounded-xl border border-white/10 bg-[#130b0d]/96 px-4 py-3 text-white shadow-2xl backdrop-blur-xl"
+      >
+        <span className="block text-[12px] font-semibold tracking-[-0.01em]">
+          Your library, in its own workspace.
+        </span>
+        <span className="mt-1 block text-[11px] leading-5 text-white/58">
+          Launch ChatSaver directly from your desktop and keep the same private, local-first vault.
+        </span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 const FILTERS: Array<{
   id: LibraryFilter;
@@ -757,6 +833,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
               <span className="size-1.5 rounded-full bg-emerald-300 shadow-[0_0_12px_rgba(110,231,183,.7)]" />
               Local-first vault
             </span>
+            <DesktopInstallButton />
             {session ? (
               <Button variant="ghost" size="icon-lg" aria-label="Open account and sync" onClick={() => setIsAccountOpen(true)}>
                 <Avatar className="size-8 border border-white/10">
@@ -911,6 +988,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
           </div>
 
           <div className="ms-auto flex items-center gap-2">
+            <DesktopInstallButton compact />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
