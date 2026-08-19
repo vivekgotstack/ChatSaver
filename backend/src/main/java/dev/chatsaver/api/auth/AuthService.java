@@ -245,6 +245,45 @@ public class AuthService {
                 """, hashToken(rawRefreshToken));
     }
 
+    public List<DeviceSummary> listDevices(AuthenticatedUser user) {
+        return jdbc.query("""
+                SELECT id, name, last_seen_at, last_sync_cursor
+                FROM device
+                WHERE user_id = ? AND revoked_at IS NULL
+                ORDER BY last_seen_at DESC NULLS LAST, created_at DESC
+                """, (resultSet, rowNumber) -> {
+            UUID id = resultSet.getObject("id", UUID.class);
+            return new DeviceSummary(
+                    id,
+                    resultSet.getString("name"),
+                    nullableInstant(resultSet, "last_seen_at"),
+                    resultSet.getLong("last_sync_cursor"),
+                    id.equals(user.deviceId()));
+        }, user.userId());
+    }
+
+    @Transactional
+    public void revokeDevice(AuthenticatedUser user, UUID deviceId) {
+        if (deviceId.equals(user.deviceId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Sign out from this device instead of removing it remotely.");
+        }
+        int updated = jdbc.update("""
+                UPDATE device
+                SET revoked_at = now()
+                WHERE id = ? AND user_id = ? AND revoked_at IS NULL
+                """, deviceId, user.userId());
+        if (updated == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "That device is no longer active.");
+        }
+        jdbc.update("""
+                UPDATE refresh_session
+                SET revoked_at = coalesce(revoked_at, now())
+                WHERE device_id = ? AND user_id = ? AND revoked_at IS NULL
+                """, deviceId, user.userId());
+    }
+
     private Session issueSession(UserRow user, UUID deviceId, UUID familyId) {
         RefreshToken refreshToken = createRefreshToken(user.id(), deviceId, familyId);
         AccessToken accessToken = jwtService.issue(user.id(), deviceId, user.email());
@@ -420,6 +459,14 @@ public class AuthService {
     }
 
     public record PublicUser(UUID id, String email, String displayName) {
+    }
+
+    public record DeviceSummary(
+            UUID id,
+            String name,
+            Instant lastSeenAt,
+            long lastSyncCursor,
+            boolean current) {
     }
 
     private record UserRow(UUID id, String email, String displayName, String passwordHash) {

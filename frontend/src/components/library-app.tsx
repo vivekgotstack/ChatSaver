@@ -86,6 +86,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SiteFooter } from "@/components/site-footer";
 import { MessageVaultVisual } from "@/components/message-vault-visual";
 import {
+  DESKTOP_ACTION_EVENT,
+  type DesktopAction,
+} from "@/components/desktop-context-menu";
+import {
   isVaultRealtimeConfigured,
   openVaultSocket,
   parseVaultSocketMessage,
@@ -539,6 +543,21 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
     void runSync(currentSession, announce);
   });
 
+  useEffect(() => {
+    function handleDesktopAction(event: Event) {
+      const action = (event as CustomEvent<DesktopAction>).detail;
+      if (action === "devices") setIsAccountOpen(true);
+      if (action === "vault") setIsVaultOpen(true);
+      if (action === "sync") {
+        if (session) requestSync(session, true);
+        else setIsAccountOpen(true);
+      }
+    }
+
+    window.addEventListener(DESKTOP_ACTION_EVENT, handleDesktopAction);
+    return () => window.removeEventListener(DESKTOP_ACTION_EVENT, handleDesktopAction);
+  }, [session]);
+
   function changeVault(nextVaultKey: string) {
     // Re-selecting the current vault must not reset the ready state: the key
     // dependency would not change, so the database effect could not run again.
@@ -751,7 +770,8 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
     setSession(authenticatedSession);
     setIsAccountOpen(false);
     if (shouldOpenHistory) {
-      router.replace("/history");
+      if (isTauriRuntime()) window.location.replace("/history/");
+      else router.replace("/history");
       return;
     }
     void runSync(authenticatedSession);

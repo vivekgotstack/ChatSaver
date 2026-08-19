@@ -7,7 +7,7 @@ import type {
 } from "@/domain/models";
 import { db } from "@/lib/db/database";
 import { createClientUuid } from "@/lib/client-uuid";
-import { API_ROOT, platformFetch } from "@/lib/platform-fetch";
+import { API_ROOT, isTauriRuntime, platformFetch } from "@/lib/platform-fetch";
 
 export interface AccountUser {
   id: string;
@@ -69,6 +69,15 @@ function deviceId(email: string): string {
   return created;
 }
 
+function deviceName(): string {
+  if (isTauriRuntime()) {
+    if (/Windows NT/i.test(navigator.userAgent)) return "ChatSaver desktop · Windows";
+    if (/Macintosh|Mac OS X/i.test(navigator.userAgent)) return "ChatSaver desktop · macOS";
+    return "ChatSaver desktop";
+  }
+  return navigator.userAgent.includes("Mobile") ? "Mobile browser" : "Desktop browser";
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   let response: Response;
   try {
@@ -112,7 +121,7 @@ export function requestRegistration(input: {
     body: JSON.stringify({
       ...input,
       deviceId: deviceId(input.email),
-      deviceName: navigator.userAgent.includes("Mobile") ? "Mobile browser" : "Desktop browser",
+      deviceName: deviceName(),
     }),
   });
 }
@@ -130,13 +139,21 @@ export function loginAccount(input: { email: string; password: string }): Promis
     body: JSON.stringify({
       ...input,
       deviceId: deviceId(input.email),
-      deviceName: navigator.userAgent.includes("Mobile") ? "Mobile browser" : "Desktop browser",
+      deviceName: deviceName(),
     }),
   });
 }
 
 export function refreshAccount(): Promise<AuthSession> {
   return request("/api/v1/auth/refresh", { method: "POST", body: "{}" });
+}
+
+export interface DeviceSummary {
+  id: string;
+  name: string;
+  lastSeenAt?: string;
+  lastSyncCursor: number;
+  current: boolean;
 }
 
 export function isVaultRealtimeConfigured(): boolean {
@@ -147,6 +164,19 @@ export function isVaultRealtimeConfigured(): boolean {
 
 export function logoutAccount(): Promise<void> {
   return request("/api/v1/auth/logout", { method: "POST", body: "{}" });
+}
+
+export function listAccountDevices(accessToken: string): Promise<DeviceSummary[]> {
+  return request("/api/v1/devices", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function revokeAccountDevice(accessToken: string, deviceId: string): Promise<void> {
+  return request(`/api/v1/devices/${encodeURIComponent(deviceId)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
 }
 
 export async function openVaultSocket(accessToken: string): Promise<WebSocket> {

@@ -1,13 +1,13 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { Cloud, Copy, Download, LoaderCircle, LogOut, MailCheck, ShieldCheck } from "lucide-react";
+import { FormEvent, useEffect, useState } from "react";
+import { Cloud, Copy, Download, LoaderCircle, LogOut, MailCheck, MonitorSmartphone, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import type { AuthSession } from "@/lib/sync";
-import { loginAccount, logoutAccount, requestRegistration, verifyRegistration } from "@/lib/sync";
+import type { AuthSession, DeviceSummary } from "@/lib/sync";
+import { listAccountDevices, loginAccount, logoutAccount, requestRegistration, revokeAccountDevice, verifyRegistration } from "@/lib/sync";
 
 interface AccountDialogProps {
   open: boolean;
@@ -27,6 +27,33 @@ export function AccountDialog({ open, session, syncing, onOpenChange, onAuthenti
   const [displayName, setDisplayName] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [awaitingCode, setAwaitingCode] = useState(false);
+  const [devices, setDevices] = useState<DeviceSummary[]>([]);
+  const [devicesBusy, setDevicesBusy] = useState(false);
+  const [devicesError, setDevicesError] = useState<string>();
+  const [confirmDeviceId, setConfirmDeviceId] = useState<string>();
+  const [removingDeviceId, setRemovingDeviceId] = useState<string>();
+
+  useEffect(() => {
+    if (!open || !session) return;
+    let active = true;
+    setDevicesBusy(true);
+    setDevicesError(undefined);
+    void listAccountDevices(session.accessToken)
+      .then((items) => {
+        if (active) setDevices(items);
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setDevicesError(error instanceof Error ? error.message : "Could not load your devices.");
+        }
+      })
+      .finally(() => {
+        if (active) setDevicesBusy(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [open, session]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -65,6 +92,25 @@ export function AccountDialog({ open, session, syncing, onOpenChange, onAuthenti
     }
   }
 
+  async function removeDevice(deviceId: string) {
+    if (!session) return;
+    setRemovingDeviceId(deviceId);
+    try {
+      await revokeAccountDevice(session.accessToken, deviceId);
+      setDevices((items) => items.filter((device) => device.id !== deviceId));
+      setConfirmDeviceId(undefined);
+      toast.success("Device removed", {
+        description: "Its refresh sessions were revoked and it can no longer sync this account.",
+      });
+    } catch (error) {
+      toast.error("Could not remove device", {
+        description: error instanceof Error ? error.message : "Try again in a moment.",
+      });
+    } finally {
+      setRemovingDeviceId(undefined);
+    }
+  }
+
   function selectMode(nextMode: "login" | "register") {
     setMode(nextMode);
     setAwaitingCode(false);
@@ -92,12 +138,72 @@ export function AccountDialog({ open, session, syncing, onOpenChange, onAuthenti
         </DialogHeader>
 
         {session ? (
-          <div className="mx-4 mb-4 rounded-2xl border border-white/8 bg-white/[0.035] p-4 sm:mx-6 sm:mb-6">
-            <p className="text-sm font-medium">{session.user.displayName || session.user.email}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{session.user.email}</p>
-            <div className="mt-4 flex gap-2">
-              <Button className="flex-1" onClick={onSync} disabled={syncing}>{syncing ? <LoaderCircle className="animate-spin" /> : <Cloud />}{syncing ? "Syncing…" : "Sync now"}</Button>
-              <Button variant="outline" onClick={() => void logout()} disabled={busy}><LogOut />Sign out</Button>
+          <div className="mx-4 mb-4 space-y-3 sm:mx-6 sm:mb-6">
+            <div className="rounded-2xl border border-white/8 bg-white/[0.035] p-4">
+              <p className="text-sm font-medium">{session.user.displayName || session.user.email}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{session.user.email}</p>
+              <div className="mt-4 flex gap-2">
+                <Button className="flex-1" onClick={onSync} disabled={syncing}>{syncing ? <LoaderCircle className="animate-spin" /> : <Cloud />}{syncing ? "Syncing…" : "Sync now"}</Button>
+                <Button variant="outline" onClick={() => void logout()} disabled={busy}><LogOut />Sign out</Button>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/8 bg-black/20 p-3.5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold">All devices</p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">Review every device allowed to sync this vault.</p>
+                </div>
+                <span className="rounded-full border border-white/8 bg-white/[0.035] px-2 py-1 font-mono text-[8px] uppercase tracking-wide text-muted-foreground">
+                  {devices.length} active
+                </span>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {devicesBusy ? (
+                  <div className="flex items-center gap-2 rounded-xl border border-white/6 px-3 py-3 text-[11px] text-muted-foreground">
+                    <LoaderCircle className="size-3.5 animate-spin text-primary" />Loading devices…
+                  </div>
+                ) : devicesError ? (
+                  <p className="rounded-xl border border-destructive/20 bg-destructive/8 px-3 py-2.5 text-[10px] text-destructive">{devicesError}</p>
+                ) : devices.map((device) => (
+                  <div key={device.id} className="rounded-xl border border-white/7 bg-white/[0.025] px-3 py-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <span className="grid size-8 shrink-0 place-items-center rounded-lg border border-white/8 bg-black/20 text-primary">
+                        <MonitorSmartphone className="size-3.5" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="truncate text-[11px] font-medium">{device.name}</p>
+                          {device.current ? <span className="rounded-full bg-emerald-400/10 px-1.5 py-0.5 font-mono text-[7px] uppercase tracking-wide text-emerald-300">This device</span> : null}
+                        </div>
+                        <p className="mt-0.5 text-[9px] text-muted-foreground">
+                          {device.lastSeenAt ? `Seen ${new Date(device.lastSeenAt).toLocaleString()}` : "Not synced yet"}
+                        </p>
+                      </div>
+                      {!device.current && confirmDeviceId !== device.id ? (
+                        <Button variant="ghost" size="icon-sm" aria-label={`Remove ${device.name}`} onClick={() => setConfirmDeviceId(device.id)}>
+                          <Trash2 className="text-destructive" />
+                        </Button>
+                      ) : null}
+                    </div>
+                    {confirmDeviceId === device.id ? (
+                      <div className="mt-2 flex items-center justify-between gap-2 border-t border-white/6 pt-2">
+                        <p className="text-[9px] text-muted-foreground">Remove this device and revoke its sessions?</p>
+                        <div className="flex gap-1.5">
+                          <Button size="xs" variant="ghost" onClick={() => setConfirmDeviceId(undefined)}>Cancel</Button>
+                          <Button size="xs" variant="destructive" disabled={removingDeviceId === device.id} onClick={() => void removeDevice(device.id)}>
+                            {removingDeviceId === device.id ? <LoaderCircle className="animate-spin" /> : <Trash2 />}Remove
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+                {!devicesBusy && !devicesError && devices.length === 0 ? (
+                  <p className="rounded-xl border border-white/6 px-3 py-3 text-[10px] text-muted-foreground">No active devices were found.</p>
+                ) : null}
+              </div>
             </div>
           </div>
         ) : (

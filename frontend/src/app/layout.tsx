@@ -4,6 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { DesktopContextMenu } from "@/components/desktop-context-menu";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         <TooltipProvider>
           {children}
+          <DesktopContextMenu />
           <ServiceWorkerRegistration />
           <Toaster position="bottom-right" richColors closeButton />
         </TooltipProvider>
