@@ -16,7 +16,21 @@ await cp(join(frontendRoot, "src"), join(stagingRoot, "src"), {
     return !relative.startsWith("/src/app/api");
   },
 });
-await cp(join(frontendRoot, "public"), join(stagingRoot, "public"), { recursive: true });
+const desktopPublicAssets = new Set([
+  "/public/art",
+  "/public/cs-transparent.png",
+  "/public/icon.svg",
+]);
+await cp(join(frontendRoot, "public"), join(stagingRoot, "public"), {
+  recursive: true,
+  filter(source) {
+    const relative = source.slice(frontendRoot.length).replaceAll("\\", "/");
+    return relative === "/public"
+      || [...desktopPublicAssets].some(
+        (asset) => relative === asset || relative.startsWith(`${asset}/`),
+      );
+  },
+});
 
 for (const file of [
   "next.config.ts",

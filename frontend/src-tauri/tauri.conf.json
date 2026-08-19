@@ -28,7 +28,6 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
     "category": "Productivity",
     "shortDescription": "Save useful chats as editable offline notes.",
     "longDescription": "ChatSaver is an offline-first library for turning useful chats into editable notes.",
