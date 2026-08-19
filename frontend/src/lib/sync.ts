@@ -7,8 +7,7 @@ import type {
 } from "@/domain/models";
 import { db } from "@/lib/db/database";
 import { createClientUuid } from "@/lib/client-uuid";
-
-const API_ROOT = "";
+import { API_ROOT, platformFetch } from "@/lib/platform-fetch";
 
 export interface AccountUser {
   id: string;
@@ -73,7 +72,7 @@ function deviceId(email: string): string {
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${API_ROOT}${path}`, {
+    response = await platformFetch(path, {
       ...init,
       credentials: "include",
       headers: {
@@ -152,6 +151,7 @@ export async function openVaultSocket(accessToken: string): Promise<WebSocket> {
   });
   const configuredRoot = process.env.NEXT_PUBLIC_WEBSOCKET_URL?.trim();
   const httpRoot = configuredRoot
+    || API_ROOT
     || (process.env.NODE_ENV === "production" ? window.location.origin : "http://localhost:8080");
   const socketRoot = httpRoot
     .replace(/^https:/, "wss:")

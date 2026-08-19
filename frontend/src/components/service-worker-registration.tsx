@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect } from "react";
+import { isTauriRuntime } from "@/lib/platform-fetch";
 
 export function ServiceWorkerRegistration() {
   useEffect(() => {
+    if (isTauriRuntime()) return;
+
     if ("serviceWorker" in navigator) {
       if (process.env.NODE_ENV === "production") {
         navigator.serviceWorker.register("/sw.js").catch((error) => {

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { NormalizedConversation } from "@/domain/models";
 import { persistImportedConversations } from "@/lib/db/database";
+import { platformFetch } from "@/lib/platform-fetch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -65,7 +66,7 @@ export function ImportDialog({ onClose, onImported }: ImportDialogProps) {
     setError(undefined);
 
     try {
-      const response = await fetch("/api/imports/chatgpt-link", {
+      const response = await platformFetch("/api/imports/chatgpt-link", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ url: shareUrl.trim() }),

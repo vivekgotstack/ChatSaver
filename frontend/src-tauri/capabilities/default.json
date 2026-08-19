@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Minimal permissions required by the ChatSaver desktop window.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://chatsaver.viveknigam.co.in/**" },
+        { "url": "http://127.0.0.1:3000/**" },
+        { "url": "http://127.0.0.1:8080/**" },
+        { "url": "http://localhost:3000/**" },
+        { "url": "http://localhost:8080/**" }
+      ]
+    }
+  ]
+}
