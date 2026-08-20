@@ -930,6 +930,33 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
               </Button>
             </div>
 
+            <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+              <Button
+                size="lg"
+                variant="outline"
+                className="h-11 rounded-xl border-white/12 bg-black/18 px-5 text-sm text-white backdrop-blur-md hover:bg-black/32"
+                onClick={() => void createNote()}
+              >
+                <FilePlus2 />
+                Start a blank note
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                disabled={!session}
+                title={session ? "Open synced history" : "Sign in to open synced history"}
+                className="h-11 rounded-xl border-white/12 bg-black/18 px-5 text-sm text-white backdrop-blur-md hover:bg-black/32"
+                onClick={() => {
+                  if (!session) return;
+                  if (isTauriRuntime()) window.location.assign("/history/");
+                  else router.push("/history");
+                }}
+              >
+                <BookOpenText />
+                History
+              </Button>
+            </div>
+
             <div className="mt-6 flex items-center gap-2 text-xs text-white/48">
               <ShieldCheck className="size-4 text-primary" />
               Imported notes are saved in this device's local vault.

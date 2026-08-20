@@ -41,14 +41,14 @@ public class AuthService {
     private final JdbcTemplate jdbc;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
-    private final SmtpEmailService emailService;
+    private final BrevoEmailService emailService;
     private final Duration refreshTokenTtl;
 
     public AuthService(
             JdbcTemplate jdbc,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
-            SmtpEmailService emailService,
+            BrevoEmailService emailService,
             @Value("${chatsaver.auth.refresh-token-days}") long refreshTokenDays) {
         this.jdbc = jdbc;
         this.passwordEncoder = passwordEncoder;
