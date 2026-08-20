@@ -8,7 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 @Component
-final class IntegrationRateLimiter {
+class IntegrationRateLimiter {
 
     private static final long WINDOW_MILLIS = Duration.ofMinutes(1).toMillis();
     private final ConcurrentHashMap<RateKey, Window> windows = new ConcurrentHashMap<>();

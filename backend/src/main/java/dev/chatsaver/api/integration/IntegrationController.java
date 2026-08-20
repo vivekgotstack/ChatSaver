@@ -27,7 +27,7 @@ import jakarta.validation.constraints.Size;
 @Validated
 @RestController
 @RequestMapping("/api/v1/integrations")
-public final class IntegrationController {
+public class IntegrationController {
 
     private final IntegrationService integrations;
 
