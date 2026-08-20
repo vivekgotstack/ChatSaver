@@ -7,6 +7,7 @@ import {
   Database,
   Download,
   FileArchive,
+  FileDown,
   HardDrive,
   ShieldCheck,
   Trash2,
@@ -46,6 +47,7 @@ interface VaultDialogProps {
   onOpenChange: (open: boolean) => void;
   accessToken?: string;
   vaultKey: string;
+  onConvertToPdf?: () => void;
 }
 
 function formatBytes(bytes?: number): string {
@@ -53,7 +55,7 @@ function formatBytes(bytes?: number): string {
   return `${(bytes / 1024 / 1024).toFixed(bytes > 10 * 1024 * 1024 ? 0 : 1)} MB`;
 }
 
-export function VaultDialog({ open, onOpenChange, accessToken, vaultKey }: VaultDialogProps) {
+export function VaultDialog({ open, onOpenChange, accessToken, vaultKey, onConvertToPdf }: VaultDialogProps) {
   const restoreInputRef = useRef<HTMLInputElement>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [storage, setStorage] = useState<{ usage?: number; quota?: number }>({});
@@ -208,6 +210,25 @@ export function VaultDialog({ open, onOpenChange, accessToken, vaultKey }: Vault
                     </span>
                   </span>
                 </Button>
+                {onConvertToPdf ? (
+                  <Button
+                    variant="outline"
+                    className="h-auto min-w-0 overflow-hidden whitespace-normal justify-start gap-3 px-4 py-3 text-left md:col-span-2"
+                    disabled={isBusy}
+                    onClick={() => {
+                      onOpenChange(false);
+                      window.setTimeout(onConvertToPdf, 0);
+                    }}
+                  >
+                    <FileDown className="shrink-0 text-primary" />
+                    <span className="min-w-0 overflow-hidden">
+                      <span className="block break-words text-sm font-medium leading-tight">Convert text to PDF</span>
+                      <span className="mt-0.5 block break-words text-xs font-normal leading-snug text-muted-foreground">
+                        Create a named PDF from a local TXT or Markdown file
+                      </span>
+                    </span>
+                  </Button>
+                ) : null}
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button

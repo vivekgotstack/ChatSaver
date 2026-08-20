@@ -16,6 +16,7 @@ import {
   CloudOff,
   Database,
   Download,
+  FileDown,
   FilePlus2,
   FolderHeart,
   Import,
@@ -105,6 +106,10 @@ const ImportDialog = dynamic(
 );
 const VaultDialog = dynamic(
   () => import("@/components/vault-dialog").then((module) => module.VaultDialog),
+  { ssr: false },
+);
+const DocumentToPdfDialog = dynamic(
+  () => import("@/components/document-to-pdf-dialog").then((module) => module.DocumentToPdfDialog),
   { ssr: false },
 );
 
@@ -476,6 +481,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
   const [selectedNoteId, setSelectedNoteId] = useState<string>();
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isVaultOpen, setIsVaultOpen] = useState(false);
+  const [isPdfConverterOpen, setIsPdfConverterOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [isMobileLibraryOpen, setIsMobileLibraryOpen] = useState(false);
@@ -550,6 +556,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
       const action = (event as CustomEvent<DesktopAction>).detail;
       if (action === "devices") setIsAccountOpen(true);
       if (action === "vault") setIsVaultOpen(true);
+      if (action === "pdf") setIsPdfConverterOpen(true);
       if (action === "sync") {
         if (session) requestSync(session, true);
         else setIsAccountOpen(true);
@@ -890,6 +897,19 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
               Local-first vault
             </span>
             <DesktopInstallButton />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-lg"
+                  aria-label="Convert text to PDF"
+                  onClick={() => setIsPdfConverterOpen(true)}
+                >
+                  <FileDown />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Convert TXT or Markdown to PDF</TooltipContent>
+            </Tooltip>
             {session ? (
               <Button variant="ghost" size="icon-lg" aria-label="Open account and sync" onClick={() => setIsAccountOpen(true)}>
                 <Avatar className="size-8 border border-white/10">
@@ -1005,7 +1025,11 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
           onOpenChange={setIsVaultOpen}
           accessToken={session?.accessToken}
           vaultKey={vaultKey}
+          onConvertToPdf={() => setIsPdfConverterOpen(true)}
         />
+        {isPdfConverterOpen ? (
+          <DocumentToPdfDialog open onOpenChange={setIsPdfConverterOpen} />
+        ) : null}
         <AccountDialog
           open={isAccountOpen}
           session={session}
@@ -1118,6 +1142,20 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
                 <Button
                   variant="ghost"
                   size="icon-lg"
+                  aria-label="Convert text to PDF"
+                  onClick={() => setIsPdfConverterOpen(true)}
+                >
+                  <FileDown />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Convert TXT or Markdown to PDF</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-lg"
                   aria-label="Open vault controls"
                   onClick={() => setIsVaultOpen(true)}
                 >
@@ -1194,7 +1232,12 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
         onOpenChange={setIsVaultOpen}
         accessToken={session?.accessToken}
         vaultKey={vaultKey}
+        onConvertToPdf={() => setIsPdfConverterOpen(true)}
       />
+
+      {isPdfConverterOpen ? (
+        <DocumentToPdfDialog open onOpenChange={setIsPdfConverterOpen} />
+      ) : null}
 
       <AccountDialog
         open={isAccountOpen}

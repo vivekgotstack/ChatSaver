@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Cloud, Database, MonitorSmartphone, RefreshCw } from "lucide-react";
+import { Cloud, Database, FileDown, MonitorSmartphone, RefreshCw } from "lucide-react";
 import { isTauriRuntime } from "@/lib/platform-fetch";
 
-export type DesktopAction = "devices" | "sync" | "vault";
+export type DesktopAction = "devices" | "sync" | "vault" | "pdf";
 export const DESKTOP_ACTION_EVENT = "chatsaver:desktop-action";
 
 const ACTIONS: Array<{
@@ -32,6 +32,12 @@ const ACTIONS: Array<{
     icon: Database,
   },
   {
+    action: "pdf",
+    label: "Convert to PDF",
+    description: "Turn a TXT or Markdown file into PDF",
+    icon: FileDown,
+  },
+  {
     label: "Refresh",
     description: "Reload the desktop workspace",
     icon: RefreshCw,
@@ -52,7 +58,7 @@ export function DesktopContextMenu() {
       event.preventDefault();
       setPosition({
         x: Math.max(8, Math.min(event.clientX, window.innerWidth - 268)),
-        y: Math.max(8, Math.min(event.clientY, window.innerHeight - 250)),
+        y: Math.max(8, Math.min(event.clientY, window.innerHeight - 306)),
       });
     }
 
