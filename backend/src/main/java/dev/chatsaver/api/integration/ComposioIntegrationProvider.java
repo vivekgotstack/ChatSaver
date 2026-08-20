@@ -42,7 +42,6 @@ public final class ComposioIntegrationProvider implements IntegrationProvider {
     private final ConcurrentHashMap<String, CachedAuthConfig> authConfigs = new ConcurrentHashMap<>();
 
     public ComposioIntegrationProvider(
-            RestClient.Builder builder,
             @Value("${chatsaver.integrations.composio.api-key:}") String apiKey,
             @Value("${chatsaver.integrations.composio.api-base-url:https://backend.composio.dev/api}") String apiBaseUrl,
             @Value("${chatsaver.integrations.composio.callback-url:}") String configuredCallbackUrl,
@@ -54,7 +53,7 @@ public final class ComposioIntegrationProvider implements IntegrationProvider {
                 : configuredCallbackUrl.trim();
         this.githubVersion = githubVersion.trim();
 
-        RestClient.Builder configuredBuilder = builder
+        RestClient.Builder configuredBuilder = RestClient.builder()
                 .baseUrl(stripTrailingSlash(apiBaseUrl));
         if (!this.apiKey.isBlank()) {
             configuredBuilder.defaultHeader("x-api-key", this.apiKey);
