@@ -11,7 +11,7 @@ import dev.chatsaver.api.integration.IntegrationModels.IntegrationAction;
 import dev.chatsaver.api.integration.IntegrationModels.IntegrationDefinition;
 
 @Component
-public final class IntegrationCatalog {
+public class IntegrationCatalog {
 
     private static final IntegrationAction GITHUB_PROFILE = new IntegrationAction(
             "verify-profile",

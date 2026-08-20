@@ -28,7 +28,7 @@ import dev.chatsaver.api.integration.IntegrationModels.IntegrationConnection;
 import dev.chatsaver.api.integration.IntegrationModels.ToolExecutionResult;
 
 @Component
-public final class ComposioIntegrationProvider implements IntegrationProvider {
+public class ComposioIntegrationProvider implements IntegrationProvider {
 
     private static final Pattern CONNECTION_ID = Pattern.compile("[A-Za-z0-9_-]{4,128}");
     private static final Duration AUTH_CONFIG_CACHE_TTL = Duration.ofMinutes(15);

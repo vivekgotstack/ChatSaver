@@ -14,7 +14,7 @@ import dev.chatsaver.api.integration.IntegrationModels.IntegrationDefinition;
 import dev.chatsaver.api.integration.IntegrationModels.ToolExecutionResult;
 
 @Service
-final class IntegrationService {
+class IntegrationService {
 
     private final IntegrationProvider provider;
     private final IntegrationCatalog catalog;
