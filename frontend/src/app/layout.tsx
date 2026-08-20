@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0b0507",
+  themeColor: "#050505",
   colorScheme: "dark",
 };
 
@@ -29,9 +29,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html
       lang="en"
       className={`${GeistSans.variable} ${GeistMono.variable} dark`}
+      style={{ backgroundColor: "#050505", colorScheme: "dark" }}
       suppressHydrationWarning
     >
-      <body>
+      <body style={{ backgroundColor: "#050505" }}>
         <TooltipProvider>
           {children}
           <DesktopContextMenu />
