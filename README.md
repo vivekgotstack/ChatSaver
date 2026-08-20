@@ -18,8 +18,8 @@
 
 ## Why I made it
 
-I wanted my knowledge to move naturally between my laptop and phone. Obsidian was already part of
-that workflow, but accessing the same vault across devices required a paid Sync subscription.
+I wanted my knowledge to move naturally between my laptop and phone. **Obsidian** was already part of
+that workflow, but accessing the same vault across devices required a **paid Sync subscription**.
 
 That friction became the reason for ChatSaver: a focused, local-first knowledge workspace that
 works offline, opens anywhere, and includes cross-device sync without placing a paywall between me
