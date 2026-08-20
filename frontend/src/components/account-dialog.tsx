@@ -233,7 +233,7 @@ export function AccountDialog({ open, session, syncing, onOpenChange, onAuthenti
               <>
                 <label className="grid gap-1.5 text-xs text-muted-foreground">Email<Input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" required placeholder="you@example.com" /></label>
                 <label className="grid gap-1.5 text-xs text-muted-foreground">{mode === "reset" ? "New password" : "Password"}<Input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} required minLength={mode === "login" ? undefined : 12} maxLength={72} placeholder={mode === "login" ? "Your password" : "At least 12 characters"} /></label>
-                {mode === "login" ? <Button type="button" variant="link" size="sm" className="h-auto justify-self-end px-0 text-[11px]" onClick={() => selectMode("reset")}>Forgot password?</Button> : null}
+                {mode === "login" ? <Button type="button" variant="ghost" size="sm" className="h-9 w-full rounded-lg border border-white/8 bg-white/[0.025] text-xs text-muted-foreground hover:bg-white/[0.05] hover:text-foreground" onClick={() => selectMode("reset")}>Forgot password? Reset it</Button> : null}
               </>
             ) : (
               <label className="grid gap-1.5 text-xs text-muted-foreground">Verification code<Input className="h-12 text-center font-mono text-xl tracking-[0.35em]" value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" required maxLength={6} placeholder="000000" autoFocus /></label>
