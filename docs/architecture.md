@@ -22,9 +22,11 @@ Next.js PWA
 Spring Boot API
 |- password authentication and rotating device sessions
 |- idempotent mutation batches
-`- full recovery plus incremental delta synchronization
+|- full recovery plus incremental delta synchronization
+`- authenticated IntegrationProvider boundary
        |
-       `- PostgreSQL (Hibernate-managed schema)
+       |- PostgreSQL (Hibernate-managed schema)
+       `- Composio managed OAuth (optional; no provider tokens stored locally)
 ```
 
 ## Frontend boundaries
@@ -36,10 +38,11 @@ Spring Boot API
 - `lib/db`: IndexedDB schema, atomic local changes, backup/recovery, and outbox creation.
 - `lib/import`: untrusted ChatGPT content validation and normalization.
 - `lib/sync`: authenticated push, delta pull, and atomic remote application.
+- `lib/integrations`: minimal authenticated contracts for the optional integration provider.
 
 ## Backend boundaries
 
-Backend packages are feature-oriented: `auth`, `sync`, `note`, `config`, `error`, and `system`.
+Backend packages are feature-oriented: `auth`, `sync`, `note`, `integration`, `config`, `error`, and `system`.
 Controllers validate HTTP contracts, services own authorization and transactions, and JDBC queries
 are always tenant-scoped. Hibernate/JPA currently manages the schema during the initial rollout.
 
@@ -57,6 +60,8 @@ are always tenant-scoped. Hibernate/JPA currently manages the schema during the 
 - Never read or store ChatGPT session cookies.
 - Parse imported/shared ChatGPT content before optional synchronization.
 - Scope every private database operation by the authenticated user.
+- Keep third-party credentials server-side, bind provider connections to the internal user UUID,
+  and execute only curated, validated actions.
 - Store refresh tokens only as hashes and bind them to independently revocable devices.
 - Backend runtime configuration is consolidated in `application.yaml` for this deployment.
 - Require HTTPS, secure cookies, an exact production web origin, and PostgreSQL TLS in production.

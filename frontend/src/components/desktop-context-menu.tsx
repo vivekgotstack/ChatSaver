@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Cloud, Database, FileDown, MonitorSmartphone, RefreshCw } from "lucide-react";
+import { Cloud, Database, FileDown, MonitorSmartphone, Plug, RefreshCw } from "lucide-react";
 import { isTauriRuntime } from "@/lib/platform-fetch";
 
-export type DesktopAction = "devices" | "sync" | "vault" | "pdf";
+export type DesktopAction = "devices" | "sync" | "vault" | "pdf" | "integrations";
 export const DESKTOP_ACTION_EVENT = "chatsaver:desktop-action";
 
 const ACTIONS: Array<{
@@ -30,6 +30,12 @@ const ACTIONS: Array<{
     label: "Vault controls",
     description: "Backup, restore, and storage",
     icon: Database,
+  },
+  {
+    action: "integrations",
+    label: "Integrations",
+    description: "Connect GitHub, Drive, and more",
+    icon: Plug,
   },
   {
     action: "pdf",
@@ -58,7 +64,7 @@ export function DesktopContextMenu() {
       event.preventDefault();
       setPosition({
         x: Math.max(8, Math.min(event.clientX, window.innerWidth - 268)),
-        y: Math.max(8, Math.min(event.clientY, window.innerHeight - 306)),
+        y: Math.max(8, Math.min(event.clientY, window.innerHeight - 366)),
       });
     }
 

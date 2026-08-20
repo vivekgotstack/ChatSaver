@@ -63,6 +63,12 @@ chatsaver:
     brevo-api-key: ${BREVO_API_KEY:}
     sender-email: ${BREVO_SENDER_EMAIL:}
     sender-name: ${BREVO_SENDER_NAME:ChatSaver}
+  integrations:
+    composio:
+      api-key: ${COMPOSIO_API_KEY:}
+      api-base-url: ${COMPOSIO_API_BASE_URL:https://backend.composio.dev/api}
+      callback-url: ${COMPOSIO_CALLBACK_URL:}
+      github-version: ${COMPOSIO_GITHUB_VERSION:20260721_00}
 
 ---
 spring:
