@@ -1,20 +1,34 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   ArrowUpRight,
   Archive,
+  Bold,
   Check,
   Clock3,
   CloudOff,
+  Code2,
   Copy,
   Download,
+  Eye,
   FileDown,
+  FileText,
   GripVertical,
+  Heading1,
+  Heading2,
+  Heading3,
+  Italic,
   LoaderCircle,
+  List,
+  ListOrdered,
   MessageSquareText,
   MoreHorizontal,
+  Pencil,
   Plus,
+  Quote,
   Sparkles,
   Star,
   Trash2,
@@ -34,7 +48,6 @@ import {
   downloadNoteMarkdown,
   noteToPlainText,
 } from "@/lib/portable";
-import { toPlainText } from "@/lib/plain-text";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -136,6 +149,163 @@ function NoteTitleEditor({ note }: { note: Note }) {
   );
 }
 
+function MarkdownView({ content, empty }: { content: string; empty: string }) {
+  const normalized = content.trim();
+  if (!normalized) {
+    return <p className="py-8 text-sm italic text-muted-foreground">{empty}</p>;
+  }
+
+  return (
+    <div className="min-w-0 text-[15px] leading-7 text-foreground/88 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          h1: (props) => <h1 className="mb-4 mt-8 text-3xl font-semibold tracking-[-0.04em]" {...props} />,
+          h2: (props) => <h2 className="mb-3 mt-7 border-b border-white/8 pb-2 text-2xl font-semibold tracking-[-0.03em]" {...props} />,
+          h3: (props) => <h3 className="mb-2 mt-6 text-xl font-semibold" {...props} />,
+          h4: (props) => <h4 className="mb-2 mt-5 text-lg font-semibold" {...props} />,
+          h5: (props) => <h5 className="mb-2 mt-4 text-base font-semibold" {...props} />,
+          h6: (props) => <h6 className="mb-2 mt-4 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground" {...props} />,
+          p: (props) => <p className="my-3 whitespace-pre-wrap" {...props} />,
+          ul: (props) => <ul className="my-3 list-disc space-y-1.5 ps-6 marker:text-primary" {...props} />,
+          ol: (props) => <ol className="my-3 list-decimal space-y-1.5 ps-6 marker:text-primary" {...props} />,
+          li: (props) => <li className="ps-1" {...props} />,
+          blockquote: (props) => <blockquote className="my-4 border-s-2 border-primary/60 bg-primary/[0.05] px-4 py-2 text-foreground/75" {...props} />,
+          strong: (props) => <strong className="font-semibold text-ivory" {...props} />,
+          em: (props) => <em className="rounded bg-primary/10 px-0.5 text-ivory" {...props} />,
+          a: (props) => <a className="text-primary underline decoration-primary/35 underline-offset-4 hover:decoration-primary" target="_blank" rel="noreferrer" {...props} />,
+          hr: (props) => <hr className="my-7 border-white/10" {...props} />,
+          pre: (props) => <pre className="my-4 overflow-x-auto rounded-xl border border-white/8 bg-black/45 p-4 font-mono text-[13px] leading-6 text-ivory/85" {...props} />,
+          code: ({ className, ...props }) => className
+            ? <code className={className} {...props} />
+            : <code className="rounded-md border border-white/8 bg-black/35 px-1.5 py-0.5 font-mono text-[0.88em] text-primary-foreground" {...props} />,
+          table: (props) => <div className="my-5 overflow-x-auto"><table className="w-full border-collapse text-sm" {...props} /></div>,
+          th: (props) => <th className="border border-white/10 bg-white/[0.05] px-3 py-2 text-left font-semibold" {...props} />,
+          td: (props) => <td className="border border-white/10 px-3 py-2 align-top" {...props} />,
+          input: (props) => <input className="me-2 accent-primary" disabled {...props} />,
+        }}
+      >
+        {normalized}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+function PlainNoteEditor({ block }: { block: NoteBlock }) {
+  const [content, setContent] = useState(block.answer);
+  const [view, setView] = useState<"write" | "preview">("write");
+  const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (document.activeElement !== textareaRef.current) setContent(block.answer);
+  }, [block.answer]);
+
+  useEffect(() => () => clearTimeout(saveTimer.current), []);
+
+  function save(nextContent: string, delay = 450) {
+    clearTimeout(saveTimer.current);
+    setSaveState("saving");
+    saveTimer.current = setTimeout(async () => {
+      try {
+        await updateNoteBlock(block.id, { question: "", answer: nextContent });
+        setSaveState("saved");
+      } catch {
+        setSaveState("error");
+      }
+    }, delay);
+  }
+
+  function replaceSelection(before: string, after = "", placeholder = "text") {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = content.slice(start, end) || placeholder;
+    const nextContent = `${content.slice(0, start)}${before}${selected}${after}${content.slice(end)}`;
+    setContent(nextContent);
+    save(nextContent);
+    window.requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + before.length, start + before.length + selected.length);
+    });
+  }
+
+  function prefixLines(prefix: string) {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const lineStart = content.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+    const lineEndIndex = content.indexOf("\n", end);
+    const lineEnd = lineEndIndex === -1 ? content.length : lineEndIndex;
+    const selection = content.slice(lineStart, lineEnd) || "Item";
+    const replacement = selection.split("\n").map((line) => `${prefix}${line}`).join("\n");
+    const nextContent = `${content.slice(0, lineStart)}${replacement}${content.slice(lineEnd)}`;
+    setContent(nextContent);
+    save(nextContent);
+    window.requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(lineStart + prefix.length, lineStart + replacement.length);
+    });
+  }
+
+  const tools = [
+    { label: "Heading 1", icon: Heading1, action: () => prefixLines("# ") },
+    { label: "Heading 2", icon: Heading2, action: () => prefixLines("## ") },
+    { label: "Heading 3", icon: Heading3, action: () => prefixLines("### ") },
+    { label: "Bold", icon: Bold, action: () => replaceSelection("**", "**") },
+    { label: "Emphasis", icon: Italic, action: () => replaceSelection("*", "*") },
+    { label: "Bullet list", icon: List, action: () => prefixLines("- ") },
+    { label: "Numbered list", icon: ListOrdered, action: () => prefixLines("1. ") },
+    { label: "Quote", icon: Quote, action: () => prefixLines("> ") },
+    { label: "Inline code", icon: Code2, action: () => replaceSelection("`", "`", "code") },
+  ];
+
+  return (
+    <Card className="overflow-hidden border-white/8 bg-card/72 py-0 shadow-xl shadow-black/10 backdrop-blur-xl">
+      <CardContent className="p-0">
+        <div className="flex flex-wrap items-center gap-2 border-b border-white/7 bg-black/15 px-3 py-2.5 sm:px-4">
+          <div className="me-auto flex flex-wrap items-center gap-1">
+            {tools.map(({ label, icon: Icon, action }) => (
+              <Button key={label} type="button" variant="ghost" size="icon-sm" title={label} aria-label={label} onClick={action}>
+                <Icon />
+              </Button>
+            ))}
+          </div>
+          <span className={`me-1 hidden items-center gap-1 font-mono text-[8px] uppercase tracking-wide sm:flex ${saveState === "error" ? "text-destructive" : "text-muted-foreground"}`} aria-live="polite">
+            {saveState === "saving" ? <LoaderCircle className="size-3 animate-spin" /> : <Check className="size-3" />}
+            {saveState}
+          </span>
+          <div className="flex rounded-lg border border-white/8 bg-black/20 p-0.5">
+            <Button type="button" variant={view === "write" ? "secondary" : "ghost"} size="xs" onClick={() => setView("write")}><Pencil />Write</Button>
+            <Button type="button" variant={view === "preview" ? "secondary" : "ghost"} size="xs" onClick={() => setView("preview")}><Eye />Reading view</Button>
+          </div>
+        </div>
+        {view === "write" ? (
+          <Textarea
+            ref={textareaRef}
+            className="min-h-[55dvh] resize-y rounded-none border-0 bg-black/15 px-5 py-5 font-mono text-[14px] leading-7 shadow-inner shadow-black/10 focus-visible:ring-primary/30 sm:px-7 sm:py-6"
+            aria-label="Markdown note content"
+            placeholder={"Write naturally with Markdown…\n\n## A heading\n- A useful point\n- Another point\n\n```\ncode belongs here\n```"}
+            value={content}
+            onChange={(event) => {
+              setContent(event.target.value);
+              save(event.target.value);
+            }}
+            onBlur={() => save(content, 0)}
+          />
+        ) : (
+          <article className="min-h-[55dvh] bg-black/10 px-5 py-6 sm:px-8 sm:py-8">
+            <MarkdownView content={content} empty="Nothing written yet. Switch to Write to begin." />
+          </article>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function QaBlockEditor({
   block,
   index,
@@ -146,7 +316,10 @@ function QaBlockEditor({
   canDelete: boolean;
 }) {
   const [question, setQuestion] = useState(block.question);
-  const [answer, setAnswer] = useState(() => toPlainText(block.answer));
+  const [answer, setAnswer] = useState(block.answer);
+  const [view, setView] = useState<"edit" | "preview">(() =>
+    block.question.trim() || block.answer.trim() ? "preview" : "edit"
+  );
   const [isEditing, setIsEditing] = useState(false);
   const [questionExpanded, setQuestionExpanded] = useState(false);
   const [answerExpanded, setAnswerExpanded] = useState(false);
@@ -158,7 +331,7 @@ function QaBlockEditor({
   useEffect(() => {
     if (!isEditing || !document.hasFocus()) {
       setQuestion(block.question);
-      setAnswer(toPlainText(block.answer));
+      setAnswer(block.answer);
     }
   }, [block.answer, block.question, isEditing]);
 
@@ -195,6 +368,16 @@ function QaBlockEditor({
               Knowledge block
             </p>
           </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1.5 text-[10px] text-muted-foreground"
+            onClick={() => setView((current) => current === "edit" ? "preview" : "edit")}
+          >
+            {view === "edit" ? <Eye /> : <Pencil />}
+            {view === "edit" ? "Preview" : "Edit"}
+          </Button>
           <GripVertical className="size-4 text-muted-foreground/50" aria-hidden="true" />
           <span
             className={`hidden items-center gap-1 font-mono text-[8px] uppercase tracking-wide sm:flex ${
@@ -247,6 +430,22 @@ function QaBlockEditor({
           ) : null}
         </div>
 
+        {view === "preview" ? (
+          <div className="grid gap-0 lg:grid-cols-2">
+            <section className="border-b border-white/6 p-5 lg:border-e lg:border-b-0 sm:p-6">
+              <p className="mb-3 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
+                <span className="size-1.5 rounded-full bg-primary" />Question
+              </p>
+              <MarkdownView content={question} empty="No question yet." />
+            </section>
+            <section className="p-5 sm:p-6">
+              <p className="mb-3 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ivory/70">
+                <span className="size-1.5 rounded-full bg-ivory/70" />Answer
+              </p>
+              <MarkdownView content={answer} empty="No answer yet." />
+            </section>
+          </div>
+        ) : (
         <div className="grid gap-0 lg:grid-cols-2">
           <div className="border-b border-white/6 p-4 lg:border-e lg:border-b-0 sm:p-5">
             <label htmlFor={questionId} className="mb-3 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
@@ -314,6 +513,7 @@ function QaBlockEditor({
             </Button>
           </div>
         </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -342,7 +542,7 @@ function EmptyEditor({
         </div>
 
         <h1 className="text-balance max-w-4xl text-5xl font-semibold leading-[0.95] tracking-[-0.065em] sm:text-6xl lg:text-8xl">
-          {historyView ? "Your conversations, " : "Give your best chats a "}
+          {historyView ? "Your conversations, " : "Give your thinking a "}
           <span className="bg-gradient-to-r from-crimson-bright via-ivory to-primary bg-clip-text text-transparent">
             {historyView ? "ready when you are." : "second life."}
           </span>
@@ -350,7 +550,7 @@ function EmptyEditor({
         <p className="mt-7 max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
           {historyView
             ? "Your synced and imported chats will appear here. Import a new conversation to start building your history."
-            : "Turn scattered AI conversations into a private, searchable library of questions, answers, and ideas that stays useful without a network connection."}
+            : "Build free-form Markdown notes or structured Q&A, then keep everything private, searchable, and useful without a network connection."}
         </p>
 
         <div className="mt-9 flex flex-col gap-3 sm:flex-row">
@@ -373,8 +573,8 @@ function EmptyEditor({
             },
             {
               icon: MessageSquareText,
-              title: "Q&A by default",
-              description: "Useful exchanges become clean, editable knowledge.",
+              title: "Markdown native",
+              description: "Headings, lists, emphasis, tables, and code stay structured.",
             },
             {
               icon: FileDown,
@@ -414,6 +614,7 @@ export function NoteEditor({
     return <EmptyEditor historyView={emptyView === "history"} onImport={onImport} onCreate={onCreate} />;
   }
   const activeNote = note;
+  const markdownBlock = note.source === "markdown" ? blocks[0] : undefined;
 
   async function copyText() {
     try {
@@ -439,12 +640,14 @@ export function NoteEditor({
             <div className="min-w-0 flex-1">
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className="border-primary/25 bg-primary/8 text-primary-foreground">
-                  <MessageSquareText className="size-3" />
-                  Q&amp;A note
+                  {markdownBlock ? <FileText className="size-3" /> : <MessageSquareText className="size-3" />}
+                  {markdownBlock ? "Markdown note" : "Q&A note"}
                 </Badge>
-                <Badge variant="secondary" className="font-mono text-[10px] uppercase">
-                  {note.blockCount} blocks
-                </Badge>
+                {!markdownBlock ? (
+                  <Badge variant="secondary" className="font-mono text-[10px] uppercase">
+                    {note.blockCount} blocks
+                  </Badge>
+                ) : null}
               </div>
               <NoteTitleEditor note={note} key={note.id} />
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
@@ -550,25 +753,31 @@ export function NoteEditor({
 
         <Separator className="mb-7 bg-white/8" />
 
-        <div className="space-y-4">
-          {blocks.map((block, index) => (
-            <QaBlockEditor
-              block={block}
-              index={index}
-              canDelete={blocks.length > 1}
-              key={block.id}
-            />
-          ))}
-        </div>
+        {markdownBlock ? (
+          <PlainNoteEditor block={markdownBlock} key={markdownBlock.id} />
+        ) : (
+          <>
+            <div className="space-y-4">
+              {blocks.map((block, index) => (
+                <QaBlockEditor
+                  block={block}
+                  index={index}
+                  canDelete={blocks.length > 1}
+                  key={block.id}
+                />
+              ))}
+            </div>
 
-        <Button
-          variant="outline"
-          className="mt-5 h-11 w-full border-dashed border-primary/25 bg-primary/[0.035] text-muted-foreground hover:border-primary/50 hover:bg-primary/8 hover:text-foreground"
-          onClick={() => void addNoteBlock(note.id)}
-        >
-          <Plus />
-          Add another Q&amp;A block
-        </Button>
+            <Button
+              variant="outline"
+              className="mt-5 h-11 w-full border-dashed border-primary/25 bg-primary/[0.035] text-muted-foreground hover:border-primary/50 hover:bg-primary/8 hover:text-foreground"
+              onClick={() => void addNoteBlock(note.id)}
+            >
+              <Plus />
+              Add another Q&amp;A block
+            </Button>
+          </>
+        )}
       </div>
     </main>
   );

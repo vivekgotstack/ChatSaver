@@ -1,6 +1,7 @@
 export type SyncStatus = "pending" | "synced" | "conflict";
 export type MessageRole = "user" | "assistant" | "system" | "tool";
-export type NoteSource = "chatgpt" | "manual";
+export type NoteSource = "chatgpt" | "manual" | "markdown";
+export type ManualNoteFormat = "markdown" | "qa";
 export type LibraryFilter = "all" | "favorites" | "imported" | "archived";
 export type NoteSort = "updated-desc" | "updated-asc" | "title-asc";
 
