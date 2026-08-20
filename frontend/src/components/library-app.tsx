@@ -380,7 +380,7 @@ function LibrarySidebar({
 }: LibrarySidebarProps) {
   return (
     <div className="sidebar-surface flex h-full min-h-0 flex-col">
-      <div className="px-4 pb-3 pt-4">
+      <div className="shrink-0 px-4 pb-3 pt-4">
         <Button className="royal-glow h-10 w-full justify-start gap-2" onClick={onCreate}>
           <Plus />
           New note
@@ -390,7 +390,7 @@ function LibrarySidebar({
         </Button>
       </div>
 
-      <div className="px-4 pb-4">
+      <div className="shrink-0 px-4 pb-4">
         <label className="relative block">
           <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -406,7 +406,7 @@ function LibrarySidebar({
         </label>
       </div>
 
-      <nav className="space-y-1 px-3" aria-label="Library sections">
+      <nav className="shrink-0 space-y-1 px-3" aria-label="Library sections">
         {FILTERS.map((item) => {
           const active = filter === item.id;
           return (
@@ -428,7 +428,7 @@ function LibrarySidebar({
         })}
       </nav>
 
-      <div className="flex items-end justify-between gap-2 px-4 pb-2 pt-6">
+      <div className="flex shrink-0 items-end justify-between gap-2 px-4 pb-2 pt-6">
         <div>
           <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-muted-foreground">
             {query ? "Search results" : FILTERS.find((item) => item.id === filter)?.label}
@@ -453,7 +453,7 @@ function LibrarySidebar({
         </Select>
       </div>
 
-      <ScrollArea className="min-h-0 flex-1 px-2">
+      <ScrollArea className="min-h-0 flex-1 overflow-hidden px-2">
         <div className="space-y-1 px-1 pb-4">
           {page.items.map((note) => (
             <Button
@@ -506,7 +506,7 @@ function LibrarySidebar({
       </ScrollArea>
 
       {page.totalPages > 1 ? (
-        <div className="flex items-center justify-between border-t border-white/7 px-3 py-2">
+        <div className="flex shrink-0 items-center justify-between border-t border-white/7 px-3 py-2">
           <Button
             variant="ghost"
             size="icon-sm"
@@ -531,7 +531,7 @@ function LibrarySidebar({
         </div>
       ) : null}
 
-      <div className="border-t border-white/7 p-3">
+      <div className="shrink-0 border-t border-white/7 p-3">
         <div className="rounded-xl border border-white/7 bg-black/15 p-3">
           <div className="flex items-center gap-2.5">
             <span className="grid size-8 place-items-center rounded-lg bg-primary/12 text-primary">
@@ -1276,7 +1276,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
         </header>
 
         <div className="flex min-h-0 flex-1">
-          <aside className="hidden w-[322px] shrink-0 border-e border-white/8 lg:block">
+          <aside className="hidden min-h-0 w-[322px] shrink-0 overflow-hidden border-e border-white/8 lg:block">
             <LibrarySidebar {...sidebarProps} />
           </aside>
 
