@@ -36,6 +36,7 @@ public class ComposioIntegrationProvider implements IntegrationProvider {
     private static final Pattern CONNECTION_ID = Pattern.compile("[A-Za-z0-9_-]{4,128}");
     private static final Duration AUTH_CONFIG_CACHE_TTL = Duration.ofMinutes(15);
     private static final String CONNECTED_ACCOUNTS_PATH = "/v3.1/connected_accounts";
+    private static final String AUTH_CONFIGS_PATH = "/v3.1/auth_configs";
     private static final int MAX_RESULTS = 12;
     private static final int MAX_CONTENT_LENGTH = 500_000;
     private static final Set<String> SEARCH_ACTIONS = Set.of(
@@ -589,7 +590,7 @@ public class ComposioIntegrationProvider implements IntegrationProvider {
 
         JsonNode response = call(() -> client.get()
                 .uri(uriBuilder -> uriBuilder
-                        .path("/v3/auth_configs")
+                        .path(AUTH_CONFIGS_PATH)
                         .queryParam("toolkit_slug", toolkit)
                         .queryParam("is_composio_managed", true)
                         .queryParam("show_disabled", false)
