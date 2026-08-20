@@ -25,6 +25,7 @@ import {
   Menu,
   MessageSquareText,
   Plus,
+  Plug,
   RotateCcw,
   Search,
   Settings2,
@@ -637,6 +638,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
       if (action === "devices") setIsAccountOpen(true);
       if (action === "vault") setIsVaultOpen(true);
       if (action === "pdf") setIsPdfConverterOpen(true);
+      if (action === "integrations") window.location.assign("/integrations/");
       if (action === "sync") {
         if (session) requestSync(session, true);
         else setIsAccountOpen(true);
@@ -984,6 +986,16 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
             <DesktopInstallButton />
             <Tooltip>
               <TooltipTrigger asChild>
+                <Button asChild variant="ghost" size="icon-lg" aria-label="Open integrations">
+                  <Link href="/integrations">
+                    <Plug />
+                  </Link>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Connect your tools</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon-lg"
@@ -1182,6 +1194,16 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
           </div>
 
           <div className="ms-auto flex items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button asChild variant="ghost" size="icon-lg" aria-label="Open integrations">
+                  <Link href="/integrations">
+                    <Plug />
+                  </Link>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Integrations</TooltipContent>
+            </Tooltip>
             <DesktopInstallButton compact />
             <Tooltip>
               <TooltipTrigger asChild>
