@@ -194,6 +194,83 @@ public class AuthService {
         return issueSession(user, deviceId, UUID.randomUUID());
     }
 
+    public RegistrationChallenge requestPasswordReset(String email, String password) {
+        String normalizedEmail = normalizeEmail(email);
+        validatePasswordBytes(password);
+        Instant now = Instant.now();
+        UserRow user = findUserByEmail(normalizedEmail).orElse(null);
+        if (user == null) return new RegistrationChallenge(normalizedEmail, now.plus(VERIFICATION_TTL));
+
+        List<Timestamp> recentSends = jdbc.query(
+                "SELECT last_sent_at FROM pending_password_reset WHERE email = ?",
+                (resultSet, rowNumber) -> resultSet.getTimestamp("last_sent_at"),
+                normalizedEmail);
+        if (!recentSends.isEmpty()
+                && recentSends.getFirst().toInstant().plus(RESEND_COOLDOWN).isAfter(now)) {
+            throw new ResponseStatusException(
+                    HttpStatus.TOO_MANY_REQUESTS,
+                    "Please wait one minute before requesting another code.");
+        }
+
+        String code = "%06d".formatted(SECURE_RANDOM.nextInt(VERIFICATION_CODE_BOUND));
+        Instant expiresAt = now.plus(VERIFICATION_TTL);
+        jdbc.update("""
+                INSERT INTO pending_password_reset
+                    (email, password_hash, verification_code_hash, attempts,
+                     expires_at, last_sent_at, created_at)
+                VALUES (?, ?, ?, 0, ?, ?, ?)
+                ON CONFLICT (email) DO UPDATE SET
+                    password_hash = excluded.password_hash,
+                    verification_code_hash = excluded.verification_code_hash,
+                    attempts = 0,
+                    expires_at = excluded.expires_at,
+                    last_sent_at = excluded.last_sent_at
+                """, normalizedEmail, passwordEncoder.encode(password),
+                hashToken(normalizedEmail + ":reset:" + code), Timestamp.from(expiresAt),
+                Timestamp.from(now), Timestamp.from(now));
+        try {
+            emailService.sendPasswordResetCode(normalizedEmail, user.displayName(), code);
+        } catch (RuntimeException exception) {
+            jdbc.update("DELETE FROM pending_password_reset WHERE email = ?", normalizedEmail);
+            throw exception;
+        }
+        return new RegistrationChallenge(normalizedEmail, expiresAt);
+    }
+
+    @Transactional(noRollbackFor = ResponseStatusException.class)
+    public void verifyPasswordReset(String email, String code) {
+        String normalizedEmail = normalizeEmail(email);
+        List<PendingPasswordResetRow> matches = jdbc.query("""
+                SELECT email, password_hash, verification_code_hash, attempts, expires_at
+                FROM pending_password_reset
+                WHERE email = ?
+                FOR UPDATE
+                """, (resultSet, rowNumber) -> new PendingPasswordResetRow(
+                        resultSet.getString("email"),
+                        resultSet.getString("password_hash"),
+                        resultSet.getString("verification_code_hash"),
+                        resultSet.getInt("attempts"),
+                        nullableInstant(resultSet, "expires_at")), normalizedEmail);
+        PendingPasswordResetRow pending = matches.stream().findFirst().orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request a new reset code."));
+        if (!pending.expiresAt().isAfter(Instant.now()) || pending.attempts() >= MAX_VERIFICATION_ATTEMPTS) {
+            jdbc.update("DELETE FROM pending_password_reset WHERE email = ?", normalizedEmail);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request a new reset code.");
+        }
+        String submittedHash = hashToken(normalizedEmail + ":reset:" + code.trim());
+        if (!MessageDigest.isEqual(
+                submittedHash.getBytes(StandardCharsets.US_ASCII),
+                pending.verificationCodeHash().getBytes(StandardCharsets.US_ASCII))) {
+            jdbc.update("UPDATE pending_password_reset SET attempts = attempts + 1 WHERE email = ?", normalizedEmail);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "That reset code is incorrect.");
+        }
+        UUID userId = findUserByEmail(normalizedEmail).map(UserRow::id).orElseThrow(AuthService::unauthorized);
+        jdbc.update("UPDATE app_user SET password_hash = ?, updated_at = now() WHERE id = ?",
+                pending.passwordHash(), userId);
+        jdbc.update("UPDATE refresh_session SET revoked_at = coalesce(revoked_at, now()) WHERE user_id = ?", userId);
+        jdbc.update("DELETE FROM pending_password_reset WHERE email = ?", normalizedEmail);
+    }
+
     @Transactional
     public Session refresh(String rawRefreshToken) {
         if (rawRefreshToken == null || rawRefreshToken.isBlank()) {
@@ -348,14 +425,14 @@ public class AuthService {
             return;
         }
         DeviceRow device = devices.getFirst();
-        if (!userId.equals(device.userId()) || device.revokedAt() != null) {
+        if (!userId.equals(device.userId())) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "This device identifier cannot be used for this session.");
         }
         jdbc.update("""
                 UPDATE device
-                SET name = ?, last_seen_at = now()
+                SET name = ?, last_seen_at = now(), revoked_at = NULL
                 WHERE id = ?
                 """, cleanDeviceName(deviceName), deviceId);
     }
@@ -507,6 +584,14 @@ public class AuthService {
     }
 
     private record RefreshToken(UUID id, String rawValue, Instant expiresAt) {
+    }
+
+    private record PendingPasswordResetRow(
+            String email,
+            String passwordHash,
+            String verificationCodeHash,
+            int attempts,
+            Instant expiresAt) {
     }
 
     private record PendingRegistrationRow(

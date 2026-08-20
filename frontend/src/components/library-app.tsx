@@ -1038,6 +1038,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
           onAuthenticated={(authenticatedSession) => void authenticated(authenticatedSession)}
           onLoggedOut={loggedOut}
           onSync={() => void runSync()}
+          onConvertToPdf={() => setIsPdfConverterOpen(true)}
         />
       </div>
     );
@@ -1247,6 +1248,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
         onAuthenticated={(authenticatedSession) => void authenticated(authenticatedSession)}
         onLoggedOut={loggedOut}
         onSync={() => void runSync()}
+        onConvertToPdf={() => setIsPdfConverterOpen(true)}
       />
 
       <CommandDialog

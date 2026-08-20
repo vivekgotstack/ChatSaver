@@ -70,6 +70,20 @@ public class AuthController {
         return sessionResponse(session);
     }
 
+    @PostMapping("/password-reset/request")
+    ResponseEntity<RegistrationChallenge> requestPasswordReset(
+            @Valid @RequestBody PasswordResetRequest request) {
+        return ResponseEntity.accepted().body(
+                authService.requestPasswordReset(request.email(), request.password()));
+    }
+
+    @PostMapping("/password-reset/verify")
+    ResponseEntity<Void> verifyPasswordReset(
+            @Valid @RequestBody VerifyPasswordResetRequest request) {
+        authService.verifyPasswordReset(request.email(), request.code());
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/refresh")
     ResponseEntity<AuthResponse> refresh(
             @CookieValue(name = REFRESH_COOKIE, required = false) String refreshToken) {
@@ -125,6 +139,16 @@ public class AuthController {
     }
 
     record VerifyRegistrationRequest(
+            @Email @NotBlank @Size(max = 320) String email,
+            @NotBlank @Size(min = 6, max = 6) String code) {
+    }
+
+    record PasswordResetRequest(
+            @Email @NotBlank @Size(max = 320) String email,
+            @NotBlank @Size(min = 12, max = 72) String password) {
+    }
+
+    record VerifyPasswordResetRequest(
             @Email @NotBlank @Size(max = 320) String email,
             @NotBlank @Size(min = 6, max = 6) String code) {
     }

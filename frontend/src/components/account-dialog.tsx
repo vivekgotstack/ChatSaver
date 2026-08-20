@@ -1,13 +1,13 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { Cloud, Copy, Download, LoaderCircle, LogOut, MailCheck, MonitorSmartphone, ShieldCheck, Trash2 } from "lucide-react";
+import { Cloud, Copy, Download, FileDown, LoaderCircle, LogOut, MailCheck, MonitorSmartphone, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import type { AuthSession, DeviceSummary } from "@/lib/sync";
-import { listAccountDevices, loginAccount, logoutAccount, requestRegistration, revokeAccountDevice, verifyRegistration } from "@/lib/sync";
+import { listAccountDevices, loginAccount, logoutAccount, requestPasswordReset, requestRegistration, revokeAccountDevice, verifyPasswordReset, verifyRegistration } from "@/lib/sync";
 
 interface AccountDialogProps {
   open: boolean;
@@ -17,10 +17,11 @@ interface AccountDialogProps {
   onAuthenticated: (session: AuthSession) => void;
   onLoggedOut: () => void;
   onSync: () => void;
+  onConvertToPdf?: () => void;
 }
 
-export function AccountDialog({ open, session, syncing, onOpenChange, onAuthenticated, onLoggedOut, onSync }: AccountDialogProps) {
-  const [mode, setMode] = useState<"login" | "register">("login");
+export function AccountDialog({ open, session, syncing, onOpenChange, onAuthenticated, onLoggedOut, onSync, onConvertToPdf }: AccountDialogProps) {
+  const [mode, setMode] = useState<"login" | "register" | "reset">("login");
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -59,6 +60,19 @@ export function AccountDialog({ open, session, syncing, onOpenChange, onAuthenti
     event.preventDefault();
     setBusy(true);
     try {
+      if (mode === "reset") {
+        if (!awaitingCode) {
+          await requestPasswordReset({ email, password });
+          setAwaitingCode(true);
+          toast.success("Reset code requested", { description: `If ${email.trim()} has an account, a six-digit code is on its way.` });
+          return;
+        }
+        await verifyPasswordReset({ email, code: verificationCode });
+        const nextSession = await loginAccount({ email, password });
+        onAuthenticated(nextSession);
+        toast.success("Password reset", { description: "Previous sessions were signed out and this device is connected." });
+        return;
+      }
       if (mode === "register" && !awaitingCode) {
         await requestRegistration({ email, password, displayName });
         setAwaitingCode(true);
@@ -73,7 +87,7 @@ export function AccountDialog({ open, session, syncing, onOpenChange, onAuthenti
         description: "Your local vault is syncing with PostgreSQL.",
       });
     } catch (error) {
-      toast.error(mode === "register" ? "Could not verify signup" : "Could not sign in", {
+      toast.error(mode === "register" ? "Could not verify signup" : mode === "reset" ? "Could not reset password" : "Could not sign in", {
         description: error instanceof Error ? error.message : "Please check the API and try again.",
       });
     } finally {
@@ -111,7 +125,7 @@ export function AccountDialog({ open, session, syncing, onOpenChange, onAuthenti
     }
   }
 
-  function selectMode(nextMode: "login" | "register") {
+  function selectMode(nextMode: "login" | "register" | "reset") {
     setMode(nextMode);
     setAwaitingCode(false);
     setVerificationCode("");
@@ -126,11 +140,13 @@ export function AccountDialog({ open, session, syncing, onOpenChange, onAuthenti
             {session ? <ShieldCheck /> : awaitingCode ? <MailCheck /> : <Cloud />}
           </div>
           <DialogTitle className="pe-7 text-xl tracking-[-0.04em] sm:text-[1.35rem]">
-            {session ? "Your synced vault" : mode === "register" ? awaitingCode ? "Check your email" : "Take your library anywhere" : "Welcome back to your vault"}
+            {session ? "Your synced vault" : mode === "reset" ? awaitingCode ? "Enter your reset code" : "Reset your password" : mode === "register" ? awaitingCode ? "Check your email" : "Take your library anywhere" : "Welcome back to your vault"}
           </DialogTitle>
           <DialogDescription className="max-w-sm text-xs leading-relaxed sm:text-sm">
             {session
               ? `Signed in as ${session.user.email}. Your IndexedDB vault remains the fast local source.`
+              : mode === "reset"
+                ? awaitingCode ? `Enter the six-digit code sent to ${email.trim()}.` : "Choose a new password and verify ownership by email."
               : mode === "register"
                 ? awaitingCode ? `We sent a six-digit verification code to ${email.trim()}.` : "Verify your email to create your PostgreSQL cloud vault."
                 : "Sign in to restore and sync your library. Your local vault stays available without an account."}
@@ -216,14 +232,15 @@ export function AccountDialog({ open, session, syncing, onOpenChange, onAuthenti
             {!awaitingCode ? (
               <>
                 <label className="grid gap-1.5 text-xs text-muted-foreground">Email<Input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" required placeholder="you@example.com" /></label>
-                <label className="grid gap-1.5 text-xs text-muted-foreground">Password<Input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete={mode === "register" ? "new-password" : "current-password"} required minLength={mode === "register" ? 12 : undefined} maxLength={72} placeholder={mode === "register" ? "At least 12 characters" : "Your password"} /></label>
+                <label className="grid gap-1.5 text-xs text-muted-foreground">{mode === "reset" ? "New password" : "Password"}<Input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} required minLength={mode === "login" ? undefined : 12} maxLength={72} placeholder={mode === "login" ? "Your password" : "At least 12 characters"} /></label>
+                {mode === "login" ? <Button type="button" variant="link" size="sm" className="h-auto justify-self-end px-0 text-[11px]" onClick={() => selectMode("reset")}>Forgot password?</Button> : null}
               </>
             ) : (
               <label className="grid gap-1.5 text-xs text-muted-foreground">Verification code<Input className="h-12 text-center font-mono text-xl tracking-[0.35em]" value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" required maxLength={6} placeholder="000000" autoFocus /></label>
             )}
             <Button className="royal-glow h-10 w-full" type="submit" disabled={busy}>
               {busy ? <LoaderCircle className="animate-spin" /> : awaitingCode ? <MailCheck /> : <Cloud />}
-              {busy ? "Connecting…" : mode === "register" ? awaitingCode ? "Verify and create account" : "Email me a code" : "Sign in and restore"}
+              {busy ? "Connecting…" : mode === "reset" ? awaitingCode ? "Reset password and sign in" : "Email me a reset code" : mode === "register" ? awaitingCode ? "Verify and create account" : "Email me a code" : "Sign in and restore"}
             </Button>
             {awaitingCode ? <Button type="button" variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={() => { setAwaitingCode(false); setVerificationCode(""); }}>Change email or resend code</Button> : null}
             <div className="rounded-xl border border-white/7 bg-white/[0.025] px-3.5 py-2.5 sm:py-3">
@@ -231,6 +248,12 @@ export function AccountDialog({ open, session, syncing, onOpenChange, onAuthenti
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 font-mono text-[9px] uppercase tracking-wide text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5"><Download className="size-3 text-primary" />Download .md</span>
                 <span className="inline-flex items-center gap-1.5"><Copy className="size-3 text-primary" />Copy as text</span>
+                {onConvertToPdf ? (
+                  <button type="button" className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground" onClick={() => {
+                    onOpenChange(false);
+                    window.setTimeout(onConvertToPdf, 0);
+                  }}><FileDown className="size-3 text-primary" />Convert to PDF</button>
+                ) : null}
               </div>
             </div>
           </form>

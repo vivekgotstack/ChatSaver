@@ -148,6 +148,20 @@ export function refreshAccount(): Promise<AuthSession> {
   return request("/api/v1/auth/refresh", { method: "POST", body: "{}" });
 }
 
+export function requestPasswordReset(input: { email: string; password: string }): Promise<RegistrationChallenge> {
+  return request("/api/v1/auth/password-reset/request", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function verifyPasswordReset(input: { email: string; code: string }): Promise<void> {
+  return request("/api/v1/auth/password-reset/verify", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export interface DeviceSummary {
   id: string;
   name: string;
