@@ -191,6 +191,34 @@ function MarkdownView({ content, empty }: { content: string; empty: string }) {
   );
 }
 
+function CollapsibleMarkdown({ content, empty }: { content: string; empty: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = content.length > 900 || content.split("\n").length > 16;
+
+  return (
+    <div>
+      <div className={`relative ${isLong && !expanded ? "max-h-80 overflow-hidden" : ""}`}>
+        <MarkdownView content={content} empty={empty} />
+        {isLong && !expanded ? (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-card via-card/90 to-transparent" aria-hidden="true" />
+        ) : null}
+      </div>
+      {isLong ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="mt-3 h-8 px-2 text-xs text-primary"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          {expanded ? "Show less" : "Read more"}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 function PlainNoteEditor({ block }: { block: NoteBlock }) {
   const [content, setContent] = useState(block.answer);
   const [view, setView] = useState<"write" | "preview">("write");
@@ -436,13 +464,13 @@ function QaBlockEditor({
               <p className="mb-3 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
                 <span className="size-1.5 rounded-full bg-primary" />Question
               </p>
-              <MarkdownView content={question} empty="No question yet." />
+              <CollapsibleMarkdown content={question} empty="No question yet." />
             </section>
             <section className="p-5 sm:p-6">
               <p className="mb-3 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ivory/70">
                 <span className="size-1.5 rounded-full bg-ivory/70" />Answer
               </p>
-              <MarkdownView content={answer} empty="No answer yet." />
+              <CollapsibleMarkdown content={answer} empty="No answer yet." />
             </section>
           </div>
         ) : (
@@ -516,6 +544,54 @@ function QaBlockEditor({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+const IMPORTED_BLOCK_BATCH = 5;
+
+function QaBlocksList({ blocks, lazy }: { blocks: NoteBlock[]; lazy: boolean }) {
+  const [visibleCount, setVisibleCount] = useState(IMPORTED_BLOCK_BATCH);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const renderedBlocks = lazy ? blocks.slice(0, visibleCount) : blocks;
+  const hasMore = lazy && visibleCount < blocks.length;
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target || !hasMore) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        setVisibleCount((current) => Math.min(current + IMPORTED_BLOCK_BATCH, blocks.length));
+      },
+      { rootMargin: "120px 0px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [blocks.length, hasMore]);
+
+  return (
+    <>
+      <div className="space-y-4">
+        {renderedBlocks.map((block, index) => (
+          <QaBlockEditor
+            block={block}
+            index={index}
+            canDelete={blocks.length > 1}
+            key={block.id}
+          />
+        ))}
+      </div>
+      {hasMore ? (
+        <div ref={loadMoreRef} className="mt-4 flex min-h-14 items-center justify-center rounded-xl border border-dashed border-white/8 text-xs text-muted-foreground" aria-live="polite">
+          <LoaderCircle className="me-2 size-3.5 animate-spin text-primary" />
+          Loading more when you reach the end · {renderedBlocks.length} of {blocks.length}
+        </div>
+      ) : lazy && blocks.length > IMPORTED_BLOCK_BATCH ? (
+        <p className="mt-4 text-center font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
+          All {blocks.length} Q&amp;A blocks loaded
+        </p>
+      ) : null}
+    </>
   );
 }
 
@@ -757,16 +833,7 @@ export function NoteEditor({
           <PlainNoteEditor block={markdownBlock} key={markdownBlock.id} />
         ) : (
           <>
-            <div className="space-y-4">
-              {blocks.map((block, index) => (
-                <QaBlockEditor
-                  block={block}
-                  index={index}
-                  canDelete={blocks.length > 1}
-                  key={block.id}
-                />
-              ))}
-            </div>
+            <QaBlocksList blocks={blocks} lazy={note.source === "chatgpt"} key={note.id} />
 
             <Button
               variant="outline"

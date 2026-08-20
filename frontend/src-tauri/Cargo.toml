@@ -1,6 +1,6 @@
 [package]
 name = "chatsaver"
-version = "0.2.4"
+version = "0.2.5"
 description = "A private, local-first knowledge workspace"
 authors = ["ChatSaver"]
 edition = "2021"
