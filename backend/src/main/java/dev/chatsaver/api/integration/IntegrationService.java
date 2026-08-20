@@ -69,11 +69,14 @@ class IntegrationService {
             Map<String, Object> input) {
         rateLimiter.check(userId, "execute", 10);
         catalog.requireAction(action);
-        if (input != null && !input.isEmpty()) {
-            throw new IntegrationException(
-                    HttpStatus.BAD_REQUEST,
-                    "This read-only action does not accept input.");
+        Map<String, Object> safeInput = input == null ? Map.of() : input;
+        if (safeInput.size() > 8 || safeInput.entrySet().stream().anyMatch(entry ->
+                entry.getKey() == null
+                        || entry.getKey().length() > 32
+                        || !(entry.getValue() instanceof String value)
+                        || value.length() > 2048)) {
+            throw new IntegrationException(HttpStatus.BAD_REQUEST, "The integration input is invalid.");
         }
-        return provider.execute(userId, connectionId, action, Map.of());
+        return provider.execute(userId, connectionId, action, Map.copyOf(safeInput));
     }
 }

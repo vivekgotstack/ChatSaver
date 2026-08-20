@@ -5,10 +5,9 @@ import Link from "next/link";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
-  Box,
   CheckCircle2,
   Code2,
-  ExternalLink,
+  FileDown,
   HardDrive,
   LoaderCircle,
   Lock,
@@ -24,6 +23,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AccountDialog } from "@/components/account-dialog";
+import { IntegrationImportDialog } from "@/components/integration-import-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -50,13 +50,12 @@ import { SiteFooter } from "@/components/site-footer";
 import {
   createIntegrationConnectLink,
   disconnectIntegration,
-  executeIntegrationAction,
   listIntegrationConnections,
   listIntegrations,
   type IntegrationConnection,
   type IntegrationDefinition,
-  type ToolExecutionResult,
 } from "@/lib/integrations";
+import { beginAccountVault, endAccountVault, restoreAccountVault } from "@/lib/db/database";
 import { refreshAccount, type AuthSession } from "@/lib/sync";
 
 const ACCOUNT_SESSION_MARKER = "chatsaver:account-session";
@@ -67,7 +66,7 @@ const SERVICE_ICONS = {
   github: Code2,
   notion: Notebook,
   slack: MessageCircle,
-  dropbox: Box,
+  linkedin: UserCheck,
 } as const;
 
 type MarketplaceFilter = "all" | "connected" | "available";
@@ -75,6 +74,11 @@ type MarketplaceFilter = "all" | "connected" | "available";
 interface PendingConnection {
   toolkit: string;
   connectionId?: string;
+}
+
+interface ImportTarget {
+  definition: IntegrationDefinition;
+  connection: IntegrationConnection;
 }
 
 function isActive(connection: IntegrationConnection): boolean {
@@ -104,7 +108,7 @@ export function IntegrationsMarketplace() {
   const [busy, setBusy] = useState<string>();
   const [pending, setPending] = useState<PendingConnection>();
   const [disconnectTarget, setDisconnectTarget] = useState<IntegrationConnection>();
-  const [results, setResults] = useState<Record<string, ToolExecutionResult>>({});
+  const [importTarget, setImportTarget] = useState<ImportTarget>();
 
   useEffect(() => {
     let hasSession = false;
@@ -122,6 +126,7 @@ export function IntegrationsMarketplace() {
     void refreshAccount()
       .then((restored) => {
         if (!active) return;
+        restoreAccountVault(restored.user.id);
         setSession(restored);
         return loadMarketplace(restored.accessToken);
       })
@@ -230,37 +235,12 @@ export function IntegrationsMarketplace() {
     try {
       await disconnectIntegration(session.accessToken, target.id);
       setConnections((current) => current.filter((connection) => connection.id !== target.id));
-      setResults((current) => {
-        const next = { ...current };
-        delete next[target.id];
-        return next;
-      });
       toast.success("Integration disconnected", {
         description: "ChatSaver can no longer use that authorized account.",
       });
     } catch (disconnectError) {
       toast.error("Could not disconnect", {
         description: disconnectError instanceof Error ? disconnectError.message : "Try again in a moment.",
-      });
-    } finally {
-      setBusy(undefined);
-    }
-  }
-
-  async function runAction(connection: IntegrationConnection, action: string) {
-    if (!session) return;
-    setBusy(`action:${connection.id}`);
-    try {
-      const result = await executeIntegrationAction(session.accessToken, connection.id, action);
-      setResults((current) => ({ ...current, [connection.id]: result }));
-      toast.success("Read-only check complete", {
-        description: result.result.login
-          ? `Connected as @${result.result.login}.`
-          : "GitHub returned a successful response.",
-      });
-    } catch (actionError) {
-      toast.error("Connection check failed", {
-        description: actionError instanceof Error ? actionError.message : "Try again in a moment.",
       });
     } finally {
       setBusy(undefined);
@@ -349,7 +329,7 @@ export function IntegrationsMarketplace() {
             <div className="grid content-start gap-3 rounded-2xl border border-white/8 bg-black/28 p-4 sm:p-5">
               <SecurityLine icon={Lock} title="Credentials stay isolated" detail="Composio stores and refreshes provider tokens." />
               <SecurityLine icon={UserCheck} title="Bound to your account" detail="Every connection is scoped to your ChatSaver UUID." />
-              <SecurityLine icon={ShieldCheck} title="Approved actions only" detail="The first live action is a read-only GitHub check." />
+              <SecurityLine icon={ShieldCheck} title="Approved actions only" detail="Search and import are read-only, explicit, and provider-scoped." />
             </div>
           </section>
 
@@ -456,12 +436,21 @@ export function IntegrationsMarketplace() {
                             ))}
                           </div>
 
+                          {activeConnections.length === 1 ? (
+                            <Button
+                              className="royal-glow mt-4 w-full"
+                              onClick={() => setImportTarget({ definition, connection: activeConnections[0] })}
+                            >
+                              <FileDown />
+                              Import knowledge
+                            </Button>
+                          ) : null}
+
                           {isExpanded ? (
                             <div className="mt-4 grid gap-2 border-t border-white/7 pt-4">
                               {serviceConnections.length === 0 ? (
                                 <p className="text-xs text-muted-foreground">No authorized account yet.</p>
                               ) : serviceConnections.map((connection) => {
-                                const result = results[connection.id];
                                 return (
                                   <div key={connection.id} className="rounded-xl border border-white/8 bg-black/30 p-3">
                                     <div className="flex items-center justify-between gap-3">
@@ -481,34 +470,17 @@ export function IntegrationsMarketplace() {
                                         {busy === `disconnect:${connection.id}` ? <LoaderCircle className="animate-spin" /> : <Unplug />}
                                       </Button>
                                     </div>
-                                    {isActive(connection) && definition.actions.map((action) => (
+                                    {isActive(connection) ? (
                                       <Button
-                                        key={action.id}
                                         variant="outline"
                                         size="sm"
                                         className="mt-3 w-full border-white/8 bg-white/[0.025]"
-                                        disabled={busy === `action:${connection.id}`}
-                                        onClick={() => void runAction(connection, action.id)}
+                                        onClick={() => setImportTarget({ definition, connection })}
                                       >
-                                        {busy === `action:${connection.id}` ? <LoaderCircle className="animate-spin" /> : <ShieldCheck />}
-                                        {action.label}
-                                        {action.readOnly ? <span className="ms-auto font-mono text-[7px] text-emerald-200/60">READ ONLY</span> : null}
+                                        <FileDown />
+                                        Import knowledge
+                                        <span className="ms-auto font-mono text-[7px] text-emerald-200/60">READ ONLY</span>
                                       </Button>
-                                    ))}
-                                    {result ? (
-                                      <div className="mt-3 rounded-lg border border-emerald-300/12 bg-emerald-300/5 p-2.5 text-[10px] text-emerald-50/75">
-                                        <p className="font-medium text-emerald-100">
-                                          {result.result.login ? `@${result.result.login}` : "Connection verified"}
-                                        </p>
-                                        {typeof result.result.public_repos === "number" ? (
-                                          <p className="mt-1">{result.result.public_repos} public repositories</p>
-                                        ) : null}
-                                        {result.result.html_url ? (
-                                          <a className="mt-2 inline-flex items-center gap-1 text-emerald-200 hover:text-white" href={result.result.html_url} target="_blank" rel="noreferrer">
-                                            Open GitHub profile <ExternalLink className="size-3" />
-                                          </a>
-                                        ) : null}
-                                      </div>
                                     ) : null}
                                   </div>
                                 );
@@ -575,18 +547,29 @@ export function IntegrationsMarketplace() {
         onOpenChange={setAccountOpen}
         onAuthenticated={(authenticated) => {
           try { localStorage.setItem(ACCOUNT_SESSION_MARKER, "1"); } catch { /* ignored */ }
+          beginAccountVault(authenticated.user.id);
           setSession(authenticated);
           setAccountOpen(false);
           void loadMarketplace(authenticated.accessToken);
         }}
         onLoggedOut={() => {
           try { localStorage.removeItem(ACCOUNT_SESSION_MARKER); } catch { /* ignored */ }
+          endAccountVault();
           setSession(undefined);
           setDefinitions([]);
           setConnections([]);
         }}
         onSync={() => undefined}
       />
+
+      {importTarget && session ? (
+        <IntegrationImportDialog
+          definition={importTarget.definition}
+          connection={importTarget.connection}
+          session={session}
+          onClose={() => setImportTarget(undefined)}
+        />
+      ) : null}
 
       <AlertDialog open={Boolean(disconnectTarget)} onOpenChange={(open) => !open && setDisconnectTarget(undefined)}>
         <AlertDialogContent className="border-white/10 bg-[#120b0d]/98">

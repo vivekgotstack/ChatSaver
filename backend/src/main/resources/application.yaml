@@ -68,7 +68,12 @@ chatsaver:
       api-key: ${COMPOSIO_API_KEY:}
       api-base-url: ${COMPOSIO_API_BASE_URL:https://backend.composio.dev/api}
       callback-url: ${COMPOSIO_CALLBACK_URL:}
+      gmail-version: ${COMPOSIO_GMAIL_VERSION:20260817_00}
+      googledrive-version: ${COMPOSIO_GOOGLEDRIVE_VERSION:20260721_00}
       github-version: ${COMPOSIO_GITHUB_VERSION:20260721_00}
+      notion-version: ${COMPOSIO_NOTION_VERSION:20260730_00}
+      slack-version: ${COMPOSIO_SLACK_VERSION:20260721_00}
+      linkedin-version: ${COMPOSIO_LINKEDIN_VERSION:20260724_00}
 
 ---
 spring:

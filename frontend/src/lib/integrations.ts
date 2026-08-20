@@ -41,11 +41,24 @@ export interface ToolExecutionResult {
   action: string;
   successful: boolean;
   result: {
-    login?: string;
-    name?: string;
-    html_url?: string;
-    public_repos?: number;
+    items?: IntegrationSearchItem[];
+    document?: ImportedIntegrationDocument;
   };
+}
+
+export interface IntegrationSearchItem {
+  id: string;
+  title: string;
+  subtitle?: string;
+  preview?: string;
+  reference: Record<string, string>;
+}
+
+export interface ImportedIntegrationDocument {
+  title: string;
+  content: string;
+  sourceLabel: string;
+  sourceUrl?: string;
 }
 
 async function integrationRequest<T>(
@@ -130,13 +143,14 @@ export function executeIntegrationAction(
   accessToken: string,
   connectionId: string,
   action: string,
+  input: Record<string, string> = {},
 ): Promise<ToolExecutionResult> {
   return integrationRequest(
     `/api/v1/integrations/connections/${encodeURIComponent(connectionId)}/execute`,
     accessToken,
     {
       method: "POST",
-      body: JSON.stringify({ action, input: {} }),
+      body: JSON.stringify({ action, input }),
     },
   );
 }
