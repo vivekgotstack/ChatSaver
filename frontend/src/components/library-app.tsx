@@ -124,6 +124,7 @@ const DocumentToPdfDialog = dynamic(
 );
 
 const PAGE_SIZE = 12;
+const FALLBACK_SYNC_INTERVAL_MS = 2 * 60 * 1_000;
 const ACCOUNT_SESSION_MARKER = "chatsaver:account-session";
 const EMPTY_PAGE: NotesPage = {
   items: [],
@@ -821,7 +822,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
         requestSync(activeSession, false);
       }
     }
-    const timer = window.setInterval(pullWhenAvailable, 5_000);
+    const timer = window.setInterval(pullWhenAvailable, FALLBACK_SYNC_INTERVAL_MS);
     window.addEventListener("focus", pullWhenAvailable);
     document.addEventListener("visibilitychange", pullWhenAvailable);
     return () => {
