@@ -203,6 +203,7 @@ async function queueMutation(mutation: OutboxMutation): Promise<void> {
       await db.outbox.put({
         ...pendingCreate,
         payload: mutation.payload,
+        createdAt: mutation.createdAt,
         attempts: 0,
       });
       return;
@@ -217,6 +218,7 @@ async function queueMutation(mutation: OutboxMutation): Promise<void> {
       await db.outbox.put({
         ...mergeTarget,
         payload: mutation.payload,
+        createdAt: mutation.createdAt,
         attempts: 0,
       });
       return;

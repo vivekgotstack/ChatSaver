@@ -514,15 +514,16 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
   );
   const stats = useLiveQuery(
     async () => {
-      const [conversations, imports, pending] = await Promise.all([
+      const [conversations, imports, pending, latestPending] = await Promise.all([
         db.conversations.count(),
         db.imports.count(),
         db.outbox.count(),
+        db.outbox.orderBy("createdAt").last(),
       ]);
-      return { conversations, imports, pending };
+      return { conversations, imports, pending, pendingRevision: latestPending?.createdAt ?? "" };
     },
     [vaultKey],
-    { conversations: 0, imports: 0, pending: 0 },
+    { conversations: 0, imports: 0, pending: 0, pendingRevision: "" },
   );
 
   const activeNoteId = selectedNoteId ?? notesPage.items[0]?.id;
@@ -646,7 +647,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
     if (!session || stats.pending === 0) return;
     const timer = window.setTimeout(() => requestSync(session, false), 1_000);
     return () => window.clearTimeout(timer);
-  }, [session, stats.pending]);
+  }, [session, stats.pending, stats.pendingRevision]);
 
   useEffect(() => {
     if (!session || !isVaultRealtimeConfigured()) {
@@ -725,6 +726,24 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
       socket?.close();
     };
   }, [session]);
+
+  useEffect(() => {
+    if (!session || realtimeState === "connected") return;
+    const activeSession = session;
+    function pullWhenAvailable() {
+      if (navigator.onLine && document.visibilityState === "visible") {
+        requestSync(activeSession, false);
+      }
+    }
+    const timer = window.setInterval(pullWhenAvailable, 5_000);
+    window.addEventListener("focus", pullWhenAvailable);
+    document.addEventListener("visibilitychange", pullWhenAvailable);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", pullWhenAvailable);
+      document.removeEventListener("visibilitychange", pullWhenAvailable);
+    };
+  }, [realtimeState, session]);
 
   async function runSync(currentSession = session, announce = true) {
     if (!currentSession) {

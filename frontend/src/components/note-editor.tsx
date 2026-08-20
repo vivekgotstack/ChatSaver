@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
   Archive,
@@ -78,8 +78,13 @@ interface NoteEditorProps {
 
 function NoteTitleEditor({ note }: { note: Note }) {
   const [title, setTitle] = useState(note.title);
+  const [isEditing, setIsEditing] = useState(false);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => {
+    if (!isEditing || !document.hasFocus()) setTitle(note.title);
+  }, [isEditing, note.title]);
 
   function save(nextTitle: string, delay = 400) {
     clearTimeout(saveTimer.current);
@@ -100,11 +105,15 @@ function NoteTitleEditor({ note }: { note: Note }) {
         className="h-auto min-w-0 border-0 bg-transparent px-0 py-1 text-3xl font-semibold tracking-[-0.045em] shadow-none focus-visible:ring-0 sm:text-4xl"
         aria-label="Note title"
         value={title}
+        onFocus={() => setIsEditing(true)}
         onChange={(event) => {
           setTitle(event.target.value);
           save(event.target.value);
         }}
-        onBlur={(event) => save(event.target.value, 0)}
+        onBlur={(event) => {
+          setIsEditing(false);
+          save(event.target.value, 0);
+        }}
       />
       <span
         className={`mt-1 inline-flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.12em] ${
@@ -121,7 +130,7 @@ function NoteTitleEditor({ note }: { note: Note }) {
           ? "Saving title"
           : saveState === "error"
             ? "Save failed"
-            : "Title saved locally"}
+            : "Title saved"}
       </span>
     </div>
   );
@@ -138,12 +147,20 @@ function QaBlockEditor({
 }) {
   const [question, setQuestion] = useState(block.question);
   const [answer, setAnswer] = useState(() => toPlainText(block.answer));
+  const [isEditing, setIsEditing] = useState(false);
   const [questionExpanded, setQuestionExpanded] = useState(false);
   const [answerExpanded, setAnswerExpanded] = useState(false);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const questionId = `question-${block.id}`;
   const answerId = `answer-${block.id}`;
+
+  useEffect(() => {
+    if (!isEditing || !document.hasFocus()) {
+      setQuestion(block.question);
+      setAnswer(toPlainText(block.answer));
+    }
+  }, [block.answer, block.question, isEditing]);
 
   function save(nextQuestion: string, nextAnswer: string, delay = 500) {
     clearTimeout(saveTimer.current);
@@ -241,11 +258,15 @@ function QaBlockEditor({
               className={`${questionExpanded ? "h-80 resize-y overflow-auto" : "h-36 resize-none overflow-hidden"} field-sizing-fixed border-0 bg-black/20 leading-6 shadow-inner shadow-black/10 focus-visible:ring-primary/35`}
               placeholder="What do you want to remember?"
               value={question}
+              onFocus={() => setIsEditing(true)}
               onChange={(event) => {
                 setQuestion(event.target.value);
                 save(event.target.value, answer);
               }}
-              onBlur={() => save(question, answer, 0)}
+              onBlur={() => {
+                setIsEditing(false);
+                save(question, answer, 0);
+              }}
             />
             <Button
               type="button"
@@ -270,11 +291,15 @@ function QaBlockEditor({
               className={`${answerExpanded ? "h-80 resize-y overflow-auto" : "h-36 resize-none overflow-hidden"} field-sizing-fixed border-0 bg-black/20 leading-6 shadow-inner shadow-black/10 focus-visible:ring-primary/35`}
               placeholder="Write the answer in your own words…"
               value={answer}
+              onFocus={() => setIsEditing(true)}
               onChange={(event) => {
                 setAnswer(event.target.value);
                 save(question, event.target.value);
               }}
-              onBlur={() => save(question, answer, 0)}
+              onBlur={() => {
+                setIsEditing(false);
+                save(question, answer, 0);
+              }}
             />
             <Button
               type="button"

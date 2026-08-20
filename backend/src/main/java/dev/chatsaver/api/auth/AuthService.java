@@ -245,12 +245,30 @@ public class AuthService {
                 """, hashToken(rawRefreshToken));
     }
 
+    @Transactional
     public List<DeviceSummary> listDevices(AuthenticatedUser user) {
+        jdbc.update("""
+                UPDATE refresh_session
+                SET revoked_at = coalesce(revoked_at, now())
+                WHERE user_id = ?
+                  AND revoked_at IS NULL
+                  AND (rotated_at IS NOT NULL OR expires_at <= now())
+                """, user.userId());
         return jdbc.query("""
-                SELECT id, name, last_seen_at, last_sync_cursor
-                FROM device
-                WHERE user_id = ? AND revoked_at IS NULL
-                ORDER BY last_seen_at DESC NULLS LAST, created_at DESC
+                SELECT d.id, d.name, d.last_seen_at, d.last_sync_cursor
+                FROM device d
+                WHERE d.user_id = ?
+                  AND d.revoked_at IS NULL
+                  AND EXISTS (
+                      SELECT 1
+                      FROM refresh_session rs
+                      WHERE rs.user_id = d.user_id
+                        AND rs.device_id = d.id
+                        AND rs.revoked_at IS NULL
+                        AND rs.rotated_at IS NULL
+                        AND rs.expires_at > now()
+                  )
+                ORDER BY d.last_seen_at DESC NULLS LAST, d.created_at DESC
                 """, (resultSet, rowNumber) -> {
             UUID id = resultSet.getObject("id", UUID.class);
             return new DeviceSummary(
