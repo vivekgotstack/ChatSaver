@@ -1,6 +1,6 @@
 [package]
 name = "chatsaver"
-version = "0.1.1"
+version = "0.1.6"
 description = "ChatSaver desktop application"
 authors = ["ChatSaver"]
 edition = "2021"
