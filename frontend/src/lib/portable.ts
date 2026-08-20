@@ -11,6 +11,12 @@ function safeFilename(value: string): string {
 }
 
 export function noteToPlainText(note: Note, blocks: NoteBlock[]): string {
+  const markdownBlock = note.source === "markdown" ? blocks[0] : undefined;
+  if (markdownBlock) {
+    return [toPlainText(note.title) || "Untitled note", "", toPlainText(markdownBlock.answer)]
+      .join("\n")
+      .trimEnd();
+  }
   const separator = "=".repeat(72);
   const sections = [...blocks]
     .sort((left, right) => left.position - right.position)
@@ -45,6 +51,10 @@ export function noteToPlainText(note: Note, blocks: NoteBlock[]): string {
 
 export function noteToMarkdown(note: Note, blocks: NoteBlock[]): string {
   const title = toPlainText(note.title) || "Untitled note";
+  const markdownBlock = note.source === "markdown" ? blocks[0] : undefined;
+  if (markdownBlock) {
+    return [`# ${title}`, "", toMarkdownText(markdownBlock.answer), ""].join("\n");
+  }
   const sections = [...blocks]
     .sort((left, right) => left.position - right.position)
     .flatMap((block, index) => {

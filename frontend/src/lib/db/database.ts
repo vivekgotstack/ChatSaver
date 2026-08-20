@@ -3,6 +3,7 @@ import type {
   Conversation,
   ImportRecord,
   LibraryFilter,
+  ManualNoteFormat,
   Message,
   NormalizedConversation,
   Note,
@@ -482,12 +483,12 @@ export async function updateNoteBlock(
   });
 }
 
-export async function createBlankNote(): Promise<string> {
+export async function createBlankNote(format: ManualNoteFormat): Promise<string> {
   const timestamp = now();
   const note: Note = {
     id: makeId(),
     title: "Untitled note",
-    source: "manual",
+    source: format === "markdown" ? "markdown" : "manual",
     isFavorite: false,
     isArchived: false,
     blockCount: 1,

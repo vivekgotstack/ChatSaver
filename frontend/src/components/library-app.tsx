@@ -18,10 +18,12 @@ import {
   Download,
   FileDown,
   FilePlus2,
+  FileText,
   FolderHeart,
   Import,
   LoaderCircle,
   Menu,
+  MessageSquareText,
   Plus,
   RotateCcw,
   Search,
@@ -33,6 +35,7 @@ import {
 import { toast } from "sonner";
 import type {
   LibraryFilter,
+  ManualNoteFormat,
   Note,
   NotesPage,
   NoteSort,
@@ -61,6 +64,13 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
@@ -194,6 +204,74 @@ function DesktopInstallButton({ compact = false }: { compact?: boolean }) {
         </span>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+function NewNoteDialog({
+  open,
+  onOpenChange,
+  onCreate,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreate: (format: ManualNoteFormat) => Promise<void>;
+}) {
+  const [creating, setCreating] = useState<ManualNoteFormat>();
+
+  async function choose(format: ManualNoteFormat) {
+    setCreating(format);
+    try {
+      await onCreate(format);
+    } catch (error) {
+      toast.error("Could not create the note", {
+        description: error instanceof Error ? error.message : "Your vault was not changed.",
+      });
+    } finally {
+      setCreating(undefined);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="border-white/10 bg-[#0b090a]/98 sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Choose your note format</DialogTitle>
+          <DialogDescription>
+            Start with a free-form Markdown page or a structured question-and-answer note.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            className="group rounded-2xl border border-primary/25 bg-primary/[0.06] p-4 text-left transition-colors hover:border-primary/55 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            disabled={Boolean(creating)}
+            onClick={() => void choose("markdown")}
+          >
+            <span className="mb-4 grid size-10 place-items-center rounded-xl bg-primary/12 text-primary">
+              {creating === "markdown" ? <LoaderCircle className="animate-spin" /> : <FileText />}
+            </span>
+            <span className="block text-sm font-semibold">Plain Markdown note</span>
+            <span className="mt-1.5 block text-xs leading-5 text-muted-foreground">
+              A heading and free-form page with lists, emphasis, links, quotes, tables, and code.
+            </span>
+          </button>
+          <button
+            type="button"
+            className="group rounded-2xl border border-white/10 bg-white/[0.025] p-4 text-left transition-colors hover:border-primary/40 hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            disabled={Boolean(creating)}
+            onClick={() => void choose("qa")}
+          >
+            <span className="mb-4 grid size-10 place-items-center rounded-xl bg-white/[0.05] text-ivory/75">
+              {creating === "qa" ? <LoaderCircle className="animate-spin" /> : <MessageSquareText />}
+            </span>
+            <span className="block text-sm font-semibold">Q&amp;A note</span>
+            <span className="mt-1.5 block text-xs leading-5 text-muted-foreground">
+              Structured question-and-answer blocks, matching imported ChatGPT conversations.
+            </span>
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -408,7 +486,7 @@ function LibrarySidebar({
                 <span className="mt-1 flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-wide">
                   {note.blockCount} blocks
                   <span className="size-0.5 rounded-full bg-current opacity-50" />
-                  {note.source === "chatgpt" ? "Imported" : "Manual"}
+                  {note.source === "chatgpt" ? "Imported" : note.source === "markdown" ? "Markdown" : "Q&A"}
                 </span>
               </span>
               <ChevronRight className="mt-2 size-3.5 opacity-0 transition-opacity group-hover:opacity-60" />
@@ -482,6 +560,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isVaultOpen, setIsVaultOpen] = useState(false);
   const [isPdfConverterOpen, setIsPdfConverterOpen] = useState(false);
+  const [isNewNoteOpen, setIsNewNoteOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [isMobileLibraryOpen, setIsMobileLibraryOpen] = useState(false);
@@ -827,11 +906,16 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
     setIsCommandOpen(false);
   }
 
-  async function createNote() {
-    const noteId = await createBlankNote();
+  function createNote() {
+    setIsNewNoteOpen(true);
+  }
+
+  async function createNoteWithFormat(format: ManualNoteFormat) {
+    const noteId = await createBlankNote(format);
     setFilter("all");
     setPage(1);
     setSelectedNoteId(noteId);
+    setIsNewNoteOpen(false);
     setIsMobileLibraryOpen(false);
     setIsCommandOpen(false);
   }
@@ -1020,6 +1104,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
             }}
           />
         ) : null}
+        <NewNoteDialog open={isNewNoteOpen} onOpenChange={setIsNewNoteOpen} onCreate={createNoteWithFormat} />
         <VaultDialog
           open={isVaultOpen}
           onOpenChange={setIsVaultOpen}
@@ -1227,6 +1312,8 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
           }}
         />
       ) : null}
+
+      <NewNoteDialog open={isNewNoteOpen} onOpenChange={setIsNewNoteOpen} onCreate={createNoteWithFormat} />
 
       <VaultDialog
         open={isVaultOpen}

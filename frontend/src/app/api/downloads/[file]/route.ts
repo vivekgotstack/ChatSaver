@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const RELEASE = "0.2.2";
+const RELEASE = "0.2.3";
 const FILES = {
   "ChatSaver.exe": "application/vnd.microsoft.portable-executable",
   "ChatSaver.dmg": "application/x-apple-diskimage",
