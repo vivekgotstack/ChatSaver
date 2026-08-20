@@ -9,7 +9,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "ChatSaver",
-  description: "An offline-first library for turning useful chats into editable notes.",
+  description: "A private, flexible workspace for notes, ideas, and everything worth remembering.",
   applicationName: "ChatSaver",
   manifest: "/manifest.webmanifest",
   icons: {

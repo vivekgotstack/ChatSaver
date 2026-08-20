@@ -30,8 +30,8 @@
     "active": true,
     "copyright": "Copyright © 2026 Vivek Nigam. All rights reserved.",
     "category": "Productivity",
-    "shortDescription": "Save useful chats as editable offline notes.",
-    "longDescription": "ChatSaver is an offline-first library for turning useful chats into editable notes.",
+    "shortDescription": "A private home for notes, ideas, and knowledge.",
+    "longDescription": "ChatSaver is a flexible, local-first knowledge workspace that stays available offline and moves securely across your devices.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

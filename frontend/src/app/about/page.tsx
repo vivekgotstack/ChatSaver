@@ -3,21 +3,21 @@ import { InformationPage } from "@/components/information-page";
 
 export const metadata: Metadata = {
   title: "About | ChatSaver",
-  description: "Learn how ChatSaver turns useful conversations into an offline-first knowledge library.",
+  description: "Learn why ChatSaver is a private, local-first workspace for ideas and knowledge.",
 };
 
 export default function AboutPage() {
   return (
     <InformationPage
       eyebrow="About ChatSaver"
-      title="Useful conversations deserve a permanent home."
-      description="ChatSaver is an offline-first knowledge studio for importing valuable chats, shaping them into editable notes, and finding them again when they matter."
+      title="Your thinking deserves a place of its own."
+      description="ChatSaver is a private, local-first workspace for shaping ideas, organizing knowledge, and keeping it within reach on every device."
     >
       <section>
-        <h2>Built for useful knowledge</h2>
+        <h2>Built for your knowledge</h2>
         <p>
-          ChatSaver helps turn long AI conversations into a focused library of questions,
-          answers, and notes. You choose what to import, what to edit, and what to keep.
+          Capture a thought on a blank page, organize questions and answers, or import selected
+          conversations. You decide what belongs in the library and how it should evolve.
         </p>
       </section>
       <section>

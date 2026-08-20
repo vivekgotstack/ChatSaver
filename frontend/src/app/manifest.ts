@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "ChatSaver",
     short_name: "ChatSaver",
-    description: "Save ChatGPT conversations as editable offline notes.",
+    description: "A private, flexible workspace for notes, ideas, and everything worth remembering.",
     id: "/",
     start_url: "/",
     scope: "/",

@@ -937,15 +937,15 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
           <section className="w-full max-w-[690px]">
             <div className="mb-6 flex items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/62">
               <span className="h-px w-9 bg-primary" />
-              Your private knowledge archive
+              Your private knowledge workspace
             </div>
             <h1 className="first-run-title text-balance text-[clamp(3.35rem,8.2vw,7.6rem)] font-semibold leading-[0.86] tracking-[-0.075em] text-white">
-              Keep the chats
-              <span className="block font-normal text-ivory/78">worth keeping.</span>
+              Think freely.
+              <span className="block font-normal text-ivory/78">Keep it yours.</span>
             </h1>
             <p className="mt-7 max-w-xl text-pretty text-[15px] leading-7 text-white/66 sm:text-base">
-              Import the ChatGPT conversations you choose. ChatSaver turns each question and
-              answer into a clean, editable note that stays available offline.
+              Capture ideas, shape notes, and build a knowledge library that stays fast offline
+              and moves securely across your devices.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
