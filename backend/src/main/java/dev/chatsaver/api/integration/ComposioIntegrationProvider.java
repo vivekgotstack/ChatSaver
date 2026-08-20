@@ -32,6 +32,7 @@ public class ComposioIntegrationProvider implements IntegrationProvider {
 
     private static final Pattern CONNECTION_ID = Pattern.compile("[A-Za-z0-9_-]{4,128}");
     private static final Duration AUTH_CONFIG_CACHE_TTL = Duration.ofMinutes(15);
+    private static final String CONNECTED_ACCOUNTS_PATH = "/v3.1/connected_accounts";
     private static final String GITHUB_PROFILE_ACTION = "verify-profile";
     private static final String GITHUB_PROFILE_TOOL = "GITHUB_GET_THE_AUTHENTICATED_USER";
 
@@ -69,14 +70,20 @@ public class ComposioIntegrationProvider implements IntegrationProvider {
     @Override
     public List<IntegrationConnection> listConnections(UUID userId) {
         requireConfigured();
-        JsonNode response = call(() -> client.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/v3.1/connected_accounts")
-                        .queryParam("user_ids", userId.toString())
-                        .queryParam("limit", 100)
-                        .build())
-                .retrieve()
-                .body(JsonNode.class));
+        JsonNode response;
+        try {
+            response = call(() -> client.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path(CONNECTED_ACCOUNTS_PATH)
+                            .queryParam("user_ids", userId.toString())
+                            .queryParam("limit", 100)
+                            .build())
+                    .retrieve()
+                    .body(JsonNode.class));
+        } catch (IntegrationException exception) {
+            if (exception.status() == HttpStatus.NOT_FOUND) return List.of();
+            throw exception;
+        }
 
         List<IntegrationConnection> connections = new ArrayList<>();
         JsonNode items = response == null ? null : response.path("items");
@@ -99,10 +106,11 @@ public class ComposioIntegrationProvider implements IntegrationProvider {
         request.put("callback_url", callbackUrl);
 
         JsonNode response = call(() -> client.post()
-                .uri("/v3/connected_accounts/link")
+                .uri(CONNECTED_ACCOUNTS_PATH + "/link")
                 .body(request)
                 .retrieve()
-                .body(JsonNode.class));
+                .body(JsonNode.class),
+                "This integration is not enabled in the Composio project yet.");
         String redirectUrl = requiredText(response, "redirect_url", "The provider did not return a connect link.");
         validateRedirectUrl(redirectUrl);
         return new ConnectLink(
@@ -115,12 +123,13 @@ public class ComposioIntegrationProvider implements IntegrationProvider {
     public CompletedConnection completeAuthentication(UUID userId, String sessionUri) {
         requireConfigured();
         JsonNode response = call(() -> client.post()
-                .uri("/v3.1/connected_accounts/complete_auth")
+                .uri(CONNECTED_ACCOUNTS_PATH + "/complete_auth")
                 .body(Map.of(
                         "session_uri", sessionUri,
                         "user_id", userId.toString()))
                 .retrieve()
-                .body(JsonNode.class));
+                .body(JsonNode.class),
+                "The authorization session expired. Start the connection again.");
         return new CompletedConnection(
                 requiredText(response, "connected_account_id", "The provider did not confirm the connection."),
                 requiredText(response, "toolkit_slug", "The provider did not identify the integration."));
@@ -131,7 +140,7 @@ public class ComposioIntegrationProvider implements IntegrationProvider {
         IntegrationConnection owned = requireOwnedConnection(userId, connectionId);
         call(() -> {
             client.delete()
-                    .uri("/v3.1/connected_accounts/{connectionId}", owned.id())
+                    .uri(CONNECTED_ACCOUNTS_PATH + "/{connectionId}", owned.id())
                     .retrieve()
                     .toBodilessEntity();
             return null;
@@ -180,9 +189,10 @@ public class ComposioIntegrationProvider implements IntegrationProvider {
             throw new IntegrationException(HttpStatus.NOT_FOUND, "Integration connection was not found.");
         }
         JsonNode response = call(() -> client.get()
-                .uri("/v3.1/connected_accounts/{connectionId}", connectionId)
+                .uri(CONNECTED_ACCOUNTS_PATH + "/{connectionId}", connectionId)
                 .retrieve()
-                .body(JsonNode.class));
+                .body(JsonNode.class),
+                "Integration connection was not found.");
         if (response == null || !userId.toString().equals(text(response, "user_id"))) {
             throw new IntegrationException(HttpStatus.NOT_FOUND, "Integration connection was not found.");
         }
@@ -207,7 +217,8 @@ public class ComposioIntegrationProvider implements IntegrationProvider {
                         .queryParam("limit", 50)
                         .build())
                 .retrieve()
-                .body(JsonNode.class));
+                .body(JsonNode.class),
+                "This integration is not enabled in the Composio project yet.");
         JsonNode items = response == null ? null : response.path("items");
         if (items != null && items.isArray()) {
             for (JsonNode item : items) {
@@ -251,6 +262,10 @@ public class ComposioIntegrationProvider implements IntegrationProvider {
     }
 
     private <T> T call(Supplier<T> request) {
+        return call(request, "The requested integration resource was not found.");
+    }
+
+    private <T> T call(Supplier<T> request, String notFoundMessage) {
         try {
             return request.get();
         } catch (IntegrationException exception) {
@@ -258,7 +273,7 @@ public class ComposioIntegrationProvider implements IntegrationProvider {
         } catch (RestClientResponseException exception) {
             int status = exception.getStatusCode().value();
             if (status == 404) {
-                throw new IntegrationException(HttpStatus.NOT_FOUND, "Integration connection was not found.");
+                throw new IntegrationException(HttpStatus.NOT_FOUND, notFoundMessage);
             }
             if (status == 429) {
                 throw new IntegrationException(
