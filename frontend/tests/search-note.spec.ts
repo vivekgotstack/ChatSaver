@@ -24,11 +24,12 @@ test('Verify note search functionality works correctly', async ({ page }) => {
   // Click on the search box and search for the note by its title
   await page.getByRole('searchbox', { name: 'Ctrl K' }).click();
   await page.getByRole('searchbox', { name: 'Ctrl K' }).fill('Who are you?');
-  await expect(page.getByRole('button', { name: 'Who are you? 1 blocks Manual' })).toBeVisible();
+  const matchingNote = page.getByRole('button', { name: 'Who are you? 1 blocks Q&A' });
+  await expect(matchingNote).toBeVisible();
 
   // Click on the note in the search results and verify that it opens correctly
   await page.getByRole('searchbox', { name: 'Ctrl K' }).press('Enter');
-  await page.getByRole('button', { name: 'Who are you? 1 blocks Manual' }).click();
+  await matchingNote.click();
   await expect(page.getByRole('textbox', { name: 'Note title' })).toHaveValue('Who are you?');
   
 });
