@@ -66,8 +66,8 @@ public class IntegrationCatalog {
                     "linkedin",
                     "LinkedIn",
                     "Professional",
-                    "Preserve your professional profile or a selected LinkedIn post as editable knowledge.",
-                    List.of("Managed OAuth", "Profile snapshot", "Read-only post import"),
+                    "Turn your professional profile and selected posts into editable career and insight workspaces.",
+                    List.of("Managed OAuth", "Career workspace", "Post insight workspace"),
                     List.of(
                             action("linkedin-import-profile", "Save my profile", "Save your connected profile as a note."),
                             action("linkedin-import-post", "Import post", "Import one selected LinkedIn post."))));
