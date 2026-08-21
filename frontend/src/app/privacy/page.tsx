@@ -41,10 +41,12 @@ export default function PrivacyPage() {
       <section>
         <h2>Private Vault</h2>
         <p>
-          Private Vault is optional and separate from account sync. Its titles, links, and
+          Private Vault is optional and uses end-to-end encrypted account sync. Titles, links, and
           descriptions are encrypted on your device with a key derived from your six-digit PIN.
-          The PIN and decrypted Private Vault content are not sent to ChatSaver&apos;s server. An
-          exported Private Vault backup remains encrypted and requires its original PIN.
+          PostgreSQL stores only ciphertext, encryption parameters, timestamps, and deletion
+          markers so the vault can be restored across signed-in devices. Your PIN, derived key,
+          and decrypted Private Vault content are never sent to ChatSaver&apos;s server. An exported
+          Private Vault backup also remains encrypted and requires its original PIN.
         </p>
       </section>
       <section>
