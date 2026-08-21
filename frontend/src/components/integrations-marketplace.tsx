@@ -50,12 +50,15 @@ import { SiteFooter } from "@/components/site-footer";
 import {
   createIntegrationConnectLink,
   disconnectIntegration,
+  INTEGRATION_CONNECTED_EVENT,
   listIntegrationConnections,
   listIntegrations,
+  readPendingIntegration,
+  rememberPendingIntegration,
   type IntegrationConnection,
   type IntegrationDefinition,
 } from "@/lib/integrations";
-import { beginAccountVault, endAccountVault, restoreAccountVault } from "@/lib/db/database";
+import { activateAccountVault, endAccountVault } from "@/lib/db/database";
 import { refreshAccount, type AuthSession } from "@/lib/sync";
 
 const ACCOUNT_SESSION_MARKER = "chatsaver:account-session";
@@ -68,6 +71,15 @@ const SERVICE_ICONS = {
   slack: MessageCircle,
   linkedin: UserCheck,
 } as const;
+
+const SERVICE_MARKS: Record<string, { label: string; className: string }> = {
+  linkedin: { label: "in", className: "bg-[#0a66c2] text-white" },
+  gmail: { label: "M", className: "bg-white text-[#d93025]" },
+  googledrive: { label: "▲", className: "bg-white text-[#188038]" },
+  github: { label: "GH", className: "bg-[#24292f] text-white" },
+  notion: { label: "N", className: "bg-white text-black" },
+  slack: { label: "#", className: "bg-[#4a154b] text-white" },
+};
 
 type MarketplaceFilter = "all" | "connected" | "available";
 
@@ -106,7 +118,10 @@ export function IntegrationsMarketplace() {
   const [filter, setFilter] = useState<MarketplaceFilter>("all");
   const [expanded, setExpanded] = useState<string>();
   const [busy, setBusy] = useState<string>();
-  const [pending, setPending] = useState<PendingConnection>();
+  const [pending, setPending] = useState<PendingConnection | undefined>(() => {
+    const remembered = typeof window === "undefined" ? undefined : readPendingIntegration();
+    return remembered ? { toolkit: remembered.toolkit, connectionId: remembered.connectionId } : undefined;
+  });
   const [disconnectTarget, setDisconnectTarget] = useState<IntegrationConnection>();
   const [importTarget, setImportTarget] = useState<ImportTarget>();
 
@@ -124,9 +139,10 @@ export function IntegrationsMarketplace() {
 
     let active = true;
     void refreshAccount()
-      .then((restored) => {
+      .then(async (restored) => {
         if (!active) return;
-        restoreAccountVault(restored.user.id);
+        await activateAccountVault(restored.user.id);
+        if (!active) return;
         setSession(restored);
         return loadMarketplace(restored.accessToken);
       })
@@ -175,6 +191,33 @@ export function IntegrationsMarketplace() {
     };
   }, [pending, session]);
 
+  useEffect(() => {
+    if (!session) return;
+    const refreshConnections = () => {
+      void listIntegrationConnections(session.accessToken).then((next) => {
+        setConnections(next);
+        const remembered = readPendingIntegration();
+        if (!remembered || next.some((connection) => isActive(connection) && (
+          remembered.connectionId ? connection.id === remembered.connectionId : connection.toolkit === remembered.toolkit
+        ))) setPending(undefined);
+      }).catch(() => undefined);
+    };
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin === window.location.origin && event.data?.type === INTEGRATION_CONNECTED_EVENT) refreshConnections();
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === INTEGRATION_CONNECTED_EVENT) refreshConnections();
+    };
+    window.addEventListener("message", onMessage);
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", refreshConnections);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", refreshConnections);
+    };
+  }, [session]);
+
   async function loadMarketplace(accessToken: string) {
     setLoading(true);
     setError(undefined);
@@ -208,9 +251,9 @@ export function IntegrationsMarketplace() {
     try {
       const link = await createIntegrationConnectLink(session.accessToken, integration.slug);
       setPending({ toolkit: integration.slug, connectionId: link.connectionId });
+      rememberPendingIntegration({ toolkit: integration.slug, connectionId: link.connectionId, startedAt: Date.now() });
       const authorizationWindow = window.open("about:blank", "chatsaver-integration", "popup");
       if (authorizationWindow) {
-        authorizationWindow.opener = null;
         authorizationWindow.location.assign(link.redirectUrl);
       } else {
         window.location.assign(link.redirectUrl);
@@ -296,7 +339,10 @@ export function IntegrationsMarketplace() {
           <div className="ms-auto flex items-center gap-2">
             {session ? (
               <Badge variant="outline" className="h-8 border-emerald-300/18 bg-emerald-300/6 px-3 text-[10px] text-emerald-100">
-                <span className="size-1.5 rounded-full bg-emerald-300" />
+                {Array.from(new Set(connections.filter(isActive).map((connection) => connection.toolkit))).slice(0, 4).map((toolkit) => (
+                  <IntegrationMark key={toolkit} toolkit={toolkit} compact />
+                ))}
+                {connectedCount === 0 ? <span className="size-1.5 rounded-full bg-white/30" /> : null}
                 {connectedCount} connected
               </Badge>
             ) : (
@@ -407,9 +453,7 @@ export function IntegrationsMarketplace() {
                       <Card key={definition.slug} className="border border-white/8 bg-black/42 py-0 shadow-[0_22px_60px_rgba(0,0,0,.25)] backdrop-blur-xl transition-colors hover:border-white/14">
                         <CardHeader className="px-5 pt-5">
                           <div className="mb-4 flex items-center gap-3">
-                            <span className="grid size-11 place-items-center rounded-xl border border-white/10 bg-white/[0.045] text-ivory shadow-inner">
-                              <Icon className="size-5" />
-                            </span>
+                            <IntegrationMark toolkit={definition.slug} fallback={Icon} />
                             <Badge variant="outline" className="border-white/8 bg-black/25 font-mono text-[8px] uppercase tracking-[0.12em] text-white/45">
                               {definition.category}
                             </Badge>
@@ -547,10 +591,16 @@ export function IntegrationsMarketplace() {
         onOpenChange={setAccountOpen}
         onAuthenticated={(authenticated) => {
           try { localStorage.setItem(ACCOUNT_SESSION_MARKER, "1"); } catch { /* ignored */ }
-          beginAccountVault(authenticated.user.id);
-          setSession(authenticated);
-          setAccountOpen(false);
-          void loadMarketplace(authenticated.accessToken);
+          void activateAccountVault(authenticated.user.id, true).then(({ importedNotes }) => {
+            setSession(authenticated);
+            setAccountOpen(false);
+            if (importedNotes > 0) {
+              toast.success("Offline notes added to your account", {
+                description: `${importedNotes} local ${importedNotes === 1 ? "note is" : "notes are"} safe and ready to sync.`,
+              });
+            }
+            void loadMarketplace(authenticated.accessToken);
+          });
         }}
         onLoggedOut={() => {
           try { localStorage.removeItem(ACCOUNT_SESSION_MARKER); } catch { /* ignored */ }
@@ -616,5 +666,26 @@ function MarketplaceLoading() {
         <div key={item} className="h-64 animate-pulse rounded-2xl border border-white/7 bg-black/30" />
       ))}
     </div>
+  );
+}
+
+function IntegrationMark({
+  toolkit,
+  compact = false,
+  fallback: Fallback = Plug,
+}: {
+  toolkit: string;
+  compact?: boolean;
+  fallback?: typeof Plug;
+}) {
+  const mark = SERVICE_MARKS[toolkit];
+  const size = compact ? "size-5 rounded-md text-[8px]" : "size-11 rounded-xl text-sm";
+  return (
+    <span
+      className={`grid shrink-0 place-items-center border border-white/12 font-bold shadow-inner ${size} ${mark?.className ?? "bg-white/[0.045] text-ivory"}`}
+      aria-label={mark ? `${toolkit} logo` : undefined}
+    >
+      {mark ? mark.label : <Fallback className={compact ? "size-3" : "size-5"} />}
+    </span>
   );
 }

@@ -44,13 +44,13 @@ import type {
 import { NoteEditor } from "@/components/note-editor";
 import { AccountDialog } from "@/components/account-dialog";
 import {
-  beginAccountVault,
+  activateAccountVault,
+  confirmGuestMigration,
   createBlankNote,
   db,
   endAccountVault,
   getLibraryCounts,
   queryNotesPage,
-  restoreAccountVault,
 } from "@/lib/db/database";
 import { useLiveQuery } from "@/hooks/use-live-query";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -711,10 +711,13 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
     void refreshAccount()
       .then((restored) => {
         if (!active) return;
-        changeVault(restoreAccountVault(restored.user.id));
-        setSelectedNoteId(undefined);
-        setSession(restored);
-        requestSync(restored, false);
+        return activateAccountVault(restored.user.id).then(({ databaseName }) => {
+          if (!active) return;
+          changeVault(databaseName);
+          setSelectedNoteId(undefined);
+          setSession(restored);
+          requestSync(restored, false);
+        });
       })
       .catch(() => {
         try { localStorage.removeItem(ACCOUNT_SESSION_MARKER); } catch { /* ignored */ }
@@ -848,6 +851,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
     setSyncState("syncing");
     try {
       const result = await synchronizeVault(currentSession.accessToken, currentSession.user.id);
+      confirmGuestMigration(currentSession.user.id);
       setSyncState("synced");
       if (announce) {
         toast.success("Vault synced", {
@@ -860,6 +864,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
         setSession(restored);
         nextSession = restored;
         const result = await synchronizeVault(restored.accessToken, restored.user.id);
+        confirmGuestMigration(restored.user.id);
         setSyncState("synced");
         if (announce) toast.success("Vault synced", { description: `${result.pulled} remote records applied.` });
       } catch {
@@ -882,7 +887,8 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
   async function authenticated(authenticatedSession: AuthSession) {
     try { localStorage.setItem(ACCOUNT_SESSION_MARKER, "1"); } catch { /* ignored */ }
     const shouldOpenHistory = !historyView && await db.notes.count() === 0;
-    changeVault(beginAccountVault(authenticatedSession.user.id));
+    const activation = await activateAccountVault(authenticatedSession.user.id, true);
+    changeVault(activation.databaseName);
     setSelectedNoteId(undefined);
     setSession(authenticatedSession);
     setIsAccountOpen(false);
@@ -890,6 +896,11 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
       if (isTauriRuntime()) window.location.replace("/history/");
       else router.replace("/history");
       return;
+    }
+    if (activation.importedNotes > 0) {
+      toast.success("Offline notes added to your account", {
+        description: `${activation.importedNotes} local ${activation.importedNotes === 1 ? "note is" : "notes are"} safe and ready to sync.`,
+      });
     }
     void runSync(authenticatedSession);
   }

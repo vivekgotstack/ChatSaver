@@ -61,6 +61,38 @@ export interface ImportedIntegrationDocument {
   sourceUrl?: string;
 }
 
+export const PENDING_INTEGRATION_KEY = "chatsaver:integration-pending";
+export const INTEGRATION_CONNECTED_EVENT = "chatsaver:integration-connected";
+
+export interface PendingIntegrationAuthentication {
+  toolkit: string;
+  connectionId?: string;
+  startedAt: number;
+}
+
+export function rememberPendingIntegration(pending: PendingIntegrationAuthentication): void {
+  try { localStorage.setItem(PENDING_INTEGRATION_KEY, JSON.stringify(pending)); } catch { /* ignored */ }
+}
+
+export function readPendingIntegration(): PendingIntegrationAuthentication | undefined {
+  try {
+    const value = JSON.parse(localStorage.getItem(PENDING_INTEGRATION_KEY) ?? "null") as Partial<PendingIntegrationAuthentication> | null;
+    if (!value || typeof value.toolkit !== "string" || typeof value.startedAt !== "number") return undefined;
+    return { toolkit: value.toolkit, connectionId: value.connectionId, startedAt: value.startedAt };
+  } catch {
+    return undefined;
+  }
+}
+
+export function announceIntegrationConnected(connectionId: string, toolkit: string): void {
+  const detail = { type: INTEGRATION_CONNECTED_EVENT, connectionId, toolkit, completedAt: Date.now() };
+  try {
+    localStorage.removeItem(PENDING_INTEGRATION_KEY);
+    localStorage.setItem(INTEGRATION_CONNECTED_EVENT, JSON.stringify(detail));
+  } catch { /* ignored */ }
+  try { window.opener?.postMessage(detail, window.location.origin); } catch { /* ignored */ }
+}
+
 async function integrationRequest<T>(
   path: string,
   accessToken: string,
