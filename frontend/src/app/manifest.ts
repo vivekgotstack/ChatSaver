@@ -15,6 +15,15 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: "#050505",
     theme_color: "#050505",
     categories: ["productivity", "utilities"],
+    shortcuts: [
+      {
+        name: "Private Vault",
+        short_name: "Private Vault",
+        description: "Open PIN-protected encrypted quick saves",
+        url: "/private-vault",
+        icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }],
+      },
+    ],
     icons: [
       {
         src: "/icon-192.png",

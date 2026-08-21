@@ -70,20 +70,20 @@ export function ConnectedIntegrationsShortcut({ accessToken }: { accessToken?: s
       aria-label={`Open ${toolkits.length} connected ${toolkits.length === 1 ? "integration" : "integrations"}`}
       className="inline-flex h-9 items-center gap-1 rounded-lg border border-emerald-300/15 bg-emerald-300/[0.045] px-1.5 transition-colors hover:border-emerald-300/30 hover:bg-emerald-300/[0.08]"
     >
-      {toolkits.slice(0, 4).map((toolkit) => {
+      {toolkits.slice(0, 4).map((toolkit, index) => {
         const mark = SERVICE_MARKS[toolkit] ?? { label: toolkit.slice(0, 2).toUpperCase(), className: "bg-white/10 text-white" };
         return (
           <span
             key={toolkit}
             title={toolkit}
-            className={`inline-flex size-6 items-center justify-center rounded-md text-[9px] font-bold shadow-sm ${mark.className}`}
+            className={`${index ? "hidden sm:inline-flex" : "inline-flex"} size-6 items-center justify-center rounded-md text-[9px] font-bold shadow-sm ${mark.className}`}
           >
             {mark.label}
           </span>
         );
       })}
       {toolkits.length > 4 ? (
-        <span className="px-0.5 font-mono text-[8px] text-emerald-100/70">+{toolkits.length - 4}</span>
+        <span className="hidden px-0.5 font-mono text-[8px] text-emerald-100/70 sm:inline">+{toolkits.length - 4}</span>
       ) : null}
     </Link>
   );
