@@ -30,6 +30,6 @@ test('Verify note deletion functionality works correctly', async ({ page }) => {
   await page.getByRole('button', { name: 'Delete note' }).click();
   await page.getByRole('button', { name: 'Delete note' }).click();
   await page.getByRole('button', { name: 'All notes' }).click();
-  await expect(page.getByRole('textbox', { name: 'Note title' })).not.toHaveValue('Who are you?');
+  await expect(page.getByRole('button', { name: 'Who are you? 1 blocks Q&A' })).toHaveCount(0);
 
 });
