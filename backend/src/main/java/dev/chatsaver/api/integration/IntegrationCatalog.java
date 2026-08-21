@@ -11,57 +11,74 @@ import dev.chatsaver.api.integration.IntegrationModels.IntegrationAction;
 import dev.chatsaver.api.integration.IntegrationModels.IntegrationDefinition;
 
 @Component
-public final class IntegrationCatalog {
+public class IntegrationCatalog {
 
-    private static final IntegrationAction GITHUB_PROFILE = new IntegrationAction(
-            "verify-profile",
-            "Verify connection",
-            "Read your public GitHub profile to confirm this connection.",
-            true);
+    private static IntegrationAction action(String id, String label, String description) {
+        return new IntegrationAction(id, label, description, true);
+    }
+
+    private static IntegrationAction writeAction(String id, String label, String description) {
+        return new IntegrationAction(id, label, description, false);
+    }
 
     private static final List<IntegrationDefinition> DEFINITIONS = List.of(
             definition(
                     "googledrive",
                     "Google Drive",
                     "Storage",
-                    "Bring approved Drive workflows into your private workspace.",
-                    List.of("Managed OAuth", "Connection management"),
-                    List.of()),
+                    "Find files, preserve them as notes, and turn source material into structured working briefs.",
+                    List.of("File search", "Editable import", "Working briefs"),
+                    List.of(
+                            action("drive-search", "Find files", "Search files you can access."),
+                            action("drive-import", "Import file", "Import one selected file as a note."))),
             definition(
                     "gmail",
                     "Gmail",
                     "Communication",
-                    "Connect email securely for future, explicitly approved workflows.",
-                    List.of("Managed OAuth", "Connection management"),
-                    List.of()),
+                    "Capture useful email threads and turn them into action briefs with commitments and reply drafts.",
+                    List.of("Email search", "Thread capture", "Action briefs"),
+                    List.of(
+                            action("gmail-search", "Find email", "Search your mailbox."),
+                            action("gmail-import-message", "Save email", "Save one selected email."),
+                            action("gmail-import-thread", "Save thread", "Save one selected email thread."))),
             definition(
                     "github",
                     "GitHub",
                     "Developer tools",
-                    "Verify your GitHub identity with a harmless read-only request.",
-                    List.of("Managed OAuth", "Read-only identity check"),
-                    List.of(GITHUB_PROFILE)),
+                    "Import repository knowledge or publish your ChatSaver vault as a versioned Markdown backup.",
+                    List.of("URL import", "README publishing", "Backup repository"),
+                    List.of(
+                            action("github-import", "Import from GitHub", "Import one supported GitHub URL."),
+                            writeAction("github-publish-backup", "Publish Markdown backup", "Commit a ChatSaver backup to an existing repository."),
+                            writeAction("github-create-backup-repo", "Create backup repository", "Create a repository and publish the first ChatSaver backup."))),
             definition(
                     "notion",
                     "Notion",
                     "Knowledge",
-                    "Prepare a secure bridge between selected Notion content and ChatSaver.",
-                    List.of("Managed OAuth", "Connection management"),
-                    List.of()),
+                    "Bring authorized pages into ChatSaver as editable Markdown or structured decision-ready briefs.",
+                    List.of("Page search", "Markdown import", "Working briefs"),
+                    List.of(
+                            action("notion-search", "Find pages", "Search authorized Notion pages."),
+                            action("notion-import", "Import page", "Import one selected page."))),
             definition(
                     "slack",
                     "Slack",
                     "Communication",
-                    "Connect a Slack workspace without exposing workspace credentials.",
-                    List.of("Managed OAuth", "Connection management"),
-                    List.of()),
+                    "Capture decisions from Slack and deliberately publish a ChatSaver knowledge digest to a channel.",
+                    List.of("Message search", "Decision workspace", "Digest publishing"),
+                    List.of(
+                            action("slack-search", "Find messages", "Search messages you can access."),
+                            action("slack-import-thread", "Save thread", "Save the selected Slack thread."),
+                            writeAction("slack-send-digest", "Publish vault digest", "Send a concise ChatSaver vault digest to one channel."))),
             definition(
-                    "dropbox",
-                    "Dropbox",
-                    "Storage",
-                    "Prepare Dropbox for approved file workflows while credentials stay isolated.",
-                    List.of("Managed OAuth", "Connection management"),
-                    List.of()));
+                    "linkedin",
+                    "LinkedIn",
+                    "Professional",
+                    "Turn your professional profile and selected posts into editable career and insight workspaces.",
+                    List.of("Managed OAuth", "Career workspace", "Post insight workspace"),
+                    List.of(
+                            action("linkedin-import-profile", "Save my profile", "Save your connected profile as a note."),
+                            action("linkedin-import-post", "Import post", "Import one selected LinkedIn post."))));
 
     private static final Map<String, IntegrationDefinition> BY_SLUG = DEFINITIONS.stream()
             .collect(java.util.stream.Collectors.toUnmodifiableMap(

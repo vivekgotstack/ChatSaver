@@ -5,10 +5,9 @@ import Link from "next/link";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
-  Box,
   CheckCircle2,
   Code2,
-  ExternalLink,
+  FileDown,
   HardDrive,
   LoaderCircle,
   Lock,
@@ -24,6 +23,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AccountDialog } from "@/components/account-dialog";
+import { IntegrationImportDialog } from "@/components/integration-import-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -50,13 +50,15 @@ import { SiteFooter } from "@/components/site-footer";
 import {
   createIntegrationConnectLink,
   disconnectIntegration,
-  executeIntegrationAction,
+  INTEGRATION_CONNECTED_EVENT,
   listIntegrationConnections,
   listIntegrations,
+  readPendingIntegration,
+  rememberPendingIntegration,
   type IntegrationConnection,
   type IntegrationDefinition,
-  type ToolExecutionResult,
 } from "@/lib/integrations";
+import { activateAccountVault, endAccountVault } from "@/lib/db/database";
 import { refreshAccount, type AuthSession } from "@/lib/sync";
 
 const ACCOUNT_SESSION_MARKER = "chatsaver:account-session";
@@ -67,14 +69,28 @@ const SERVICE_ICONS = {
   github: Code2,
   notion: Notebook,
   slack: MessageCircle,
-  dropbox: Box,
+  linkedin: UserCheck,
 } as const;
+
+const SERVICE_MARKS: Record<string, { label: string; className: string }> = {
+  linkedin: { label: "in", className: "bg-[#0a66c2] text-white" },
+  gmail: { label: "M", className: "bg-white text-[#d93025]" },
+  googledrive: { label: "▲", className: "bg-white text-[#188038]" },
+  github: { label: "GH", className: "bg-[#24292f] text-white" },
+  notion: { label: "N", className: "bg-white text-black" },
+  slack: { label: "#", className: "bg-[#4a154b] text-white" },
+};
 
 type MarketplaceFilter = "all" | "connected" | "available";
 
 interface PendingConnection {
   toolkit: string;
   connectionId?: string;
+}
+
+interface ImportTarget {
+  definition: IntegrationDefinition;
+  connection: IntegrationConnection;
 }
 
 function isActive(connection: IntegrationConnection): boolean {
@@ -102,9 +118,12 @@ export function IntegrationsMarketplace() {
   const [filter, setFilter] = useState<MarketplaceFilter>("all");
   const [expanded, setExpanded] = useState<string>();
   const [busy, setBusy] = useState<string>();
-  const [pending, setPending] = useState<PendingConnection>();
+  const [pending, setPending] = useState<PendingConnection | undefined>(() => {
+    const remembered = typeof window === "undefined" ? undefined : readPendingIntegration();
+    return remembered ? { toolkit: remembered.toolkit, connectionId: remembered.connectionId } : undefined;
+  });
   const [disconnectTarget, setDisconnectTarget] = useState<IntegrationConnection>();
-  const [results, setResults] = useState<Record<string, ToolExecutionResult>>({});
+  const [importTarget, setImportTarget] = useState<ImportTarget>();
 
   useEffect(() => {
     let hasSession = false;
@@ -120,7 +139,9 @@ export function IntegrationsMarketplace() {
 
     let active = true;
     void refreshAccount()
-      .then((restored) => {
+      .then(async (restored) => {
+        if (!active) return;
+        await activateAccountVault(restored.user.id);
         if (!active) return;
         setSession(restored);
         return loadMarketplace(restored.accessToken);
@@ -170,6 +191,33 @@ export function IntegrationsMarketplace() {
     };
   }, [pending, session]);
 
+  useEffect(() => {
+    if (!session) return;
+    const refreshConnections = () => {
+      void listIntegrationConnections(session.accessToken).then((next) => {
+        setConnections(next);
+        const remembered = readPendingIntegration();
+        if (!remembered || next.some((connection) => isActive(connection) && (
+          remembered.connectionId ? connection.id === remembered.connectionId : connection.toolkit === remembered.toolkit
+        ))) setPending(undefined);
+      }).catch(() => undefined);
+    };
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin === window.location.origin && event.data?.type === INTEGRATION_CONNECTED_EVENT) refreshConnections();
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === INTEGRATION_CONNECTED_EVENT) refreshConnections();
+    };
+    window.addEventListener("message", onMessage);
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", refreshConnections);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", refreshConnections);
+    };
+  }, [session]);
+
   async function loadMarketplace(accessToken: string) {
     setLoading(true);
     setError(undefined);
@@ -203,9 +251,9 @@ export function IntegrationsMarketplace() {
     try {
       const link = await createIntegrationConnectLink(session.accessToken, integration.slug);
       setPending({ toolkit: integration.slug, connectionId: link.connectionId });
+      rememberPendingIntegration({ toolkit: integration.slug, connectionId: link.connectionId, startedAt: Date.now() });
       const authorizationWindow = window.open("about:blank", "chatsaver-integration", "popup");
       if (authorizationWindow) {
-        authorizationWindow.opener = null;
         authorizationWindow.location.assign(link.redirectUrl);
       } else {
         window.location.assign(link.redirectUrl);
@@ -230,37 +278,12 @@ export function IntegrationsMarketplace() {
     try {
       await disconnectIntegration(session.accessToken, target.id);
       setConnections((current) => current.filter((connection) => connection.id !== target.id));
-      setResults((current) => {
-        const next = { ...current };
-        delete next[target.id];
-        return next;
-      });
       toast.success("Integration disconnected", {
         description: "ChatSaver can no longer use that authorized account.",
       });
     } catch (disconnectError) {
       toast.error("Could not disconnect", {
         description: disconnectError instanceof Error ? disconnectError.message : "Try again in a moment.",
-      });
-    } finally {
-      setBusy(undefined);
-    }
-  }
-
-  async function runAction(connection: IntegrationConnection, action: string) {
-    if (!session) return;
-    setBusy(`action:${connection.id}`);
-    try {
-      const result = await executeIntegrationAction(session.accessToken, connection.id, action);
-      setResults((current) => ({ ...current, [connection.id]: result }));
-      toast.success("Read-only check complete", {
-        description: result.result.login
-          ? `Connected as @${result.result.login}.`
-          : "GitHub returned a successful response.",
-      });
-    } catch (actionError) {
-      toast.error("Connection check failed", {
-        description: actionError instanceof Error ? actionError.message : "Try again in a moment.",
       });
     } finally {
       setBusy(undefined);
@@ -316,7 +339,10 @@ export function IntegrationsMarketplace() {
           <div className="ms-auto flex items-center gap-2">
             {session ? (
               <Badge variant="outline" className="h-8 border-emerald-300/18 bg-emerald-300/6 px-3 text-[10px] text-emerald-100">
-                <span className="size-1.5 rounded-full bg-emerald-300" />
+                {Array.from(new Set(connections.filter(isActive).map((connection) => connection.toolkit))).slice(0, 4).map((toolkit) => (
+                  <IntegrationMark key={toolkit} toolkit={toolkit} compact />
+                ))}
+                {connectedCount === 0 ? <span className="size-1.5 rounded-full bg-white/30" /> : null}
                 {connectedCount} connected
               </Badge>
             ) : (
@@ -349,7 +375,7 @@ export function IntegrationsMarketplace() {
             <div className="grid content-start gap-3 rounded-2xl border border-white/8 bg-black/28 p-4 sm:p-5">
               <SecurityLine icon={Lock} title="Credentials stay isolated" detail="Composio stores and refreshes provider tokens." />
               <SecurityLine icon={UserCheck} title="Bound to your account" detail="Every connection is scoped to your ChatSaver UUID." />
-              <SecurityLine icon={ShieldCheck} title="Approved actions only" detail="The first live action is a read-only GitHub check." />
+              <SecurityLine icon={ShieldCheck} title="Approved actions only" detail="Imports stay read-only; scoped write actions require a separate confirmation." />
             </div>
           </section>
 
@@ -416,26 +442,28 @@ export function IntegrationsMarketplace() {
                   No integrations match this view.
                 </div>
               ) : (
-                <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-label="Integration marketplace">
+                <section
+                  className="mt-6 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-3 md:grid md:grid-cols-2 md:overflow-visible md:pb-0 lg:grid-cols-3"
+                  aria-label="Integration marketplace"
+                >
                   {visibleDefinitions.map((definition) => {
                     const Icon = SERVICE_ICONS[definition.slug as keyof typeof SERVICE_ICONS] ?? Plug;
                     const serviceConnections = connectionMap.get(definition.slug) ?? [];
                     const activeConnections = serviceConnections.filter(isActive);
+                    const supportsWrites = definition.actions.some((action) => !action.readOnly);
                     const isExpanded = expanded === definition.slug;
                     const isPending = pending?.toolkit === definition.slug;
                     return (
-                      <Card key={definition.slug} className="border border-white/8 bg-black/42 py-0 shadow-[0_22px_60px_rgba(0,0,0,.25)] backdrop-blur-xl transition-colors hover:border-white/14">
-                        <CardHeader className="px-5 pt-5">
-                          <div className="mb-4 flex items-center gap-3">
-                            <span className="grid size-11 place-items-center rounded-xl border border-white/10 bg-white/[0.045] text-ivory shadow-inner">
-                              <Icon className="size-5" />
-                            </span>
+                      <Card key={definition.slug} className="min-w-[min(78vw,280px)] snap-start border border-white/8 bg-black/42 py-0 shadow-[0_22px_60px_rgba(0,0,0,.25)] backdrop-blur-xl transition-colors hover:border-white/14 md:min-w-0">
+                        <CardHeader className="px-4 pt-4 sm:px-5 sm:pt-5">
+                          <div className="mb-3 flex items-center gap-3 sm:mb-4">
+                            <IntegrationMark toolkit={definition.slug} fallback={Icon} />
                             <Badge variant="outline" className="border-white/8 bg-black/25 font-mono text-[8px] uppercase tracking-[0.12em] text-white/45">
                               {definition.category}
                             </Badge>
                           </div>
                           <CardTitle className="text-lg tracking-[-0.035em]">{definition.name}</CardTitle>
-                          <CardDescription className="min-h-10 text-xs leading-5 text-white/48">
+                          <CardDescription className="hidden min-h-10 text-xs leading-5 text-white/48 sm:block">
                             {definition.description}
                           </CardDescription>
                           <CardAction>
@@ -447,8 +475,8 @@ export function IntegrationsMarketplace() {
                             ) : null}
                           </CardAction>
                         </CardHeader>
-                        <CardContent className="px-5 pb-5">
-                          <div className="flex flex-wrap gap-1.5">
+                        <CardContent className="px-4 pb-4 sm:px-5 sm:pb-5">
+                          <div className="hidden flex-wrap gap-1.5 sm:flex">
                             {definition.capabilities.map((capability) => (
                               <span key={capability} className="rounded-md border border-white/7 bg-white/[0.025] px-2 py-1 text-[9px] text-white/42">
                                 {capability}
@@ -456,12 +484,21 @@ export function IntegrationsMarketplace() {
                             ))}
                           </div>
 
+                          {activeConnections.length === 1 ? (
+                            <Button
+                              className="royal-glow mt-4 w-full"
+                              onClick={() => setImportTarget({ definition, connection: activeConnections[0] })}
+                            >
+                              <FileDown />
+                              Use integration
+                            </Button>
+                          ) : null}
+
                           {isExpanded ? (
                             <div className="mt-4 grid gap-2 border-t border-white/7 pt-4">
                               {serviceConnections.length === 0 ? (
                                 <p className="text-xs text-muted-foreground">No authorized account yet.</p>
                               ) : serviceConnections.map((connection) => {
-                                const result = results[connection.id];
                                 return (
                                   <div key={connection.id} className="rounded-xl border border-white/8 bg-black/30 p-3">
                                     <div className="flex items-center justify-between gap-3">
@@ -481,34 +518,17 @@ export function IntegrationsMarketplace() {
                                         {busy === `disconnect:${connection.id}` ? <LoaderCircle className="animate-spin" /> : <Unplug />}
                                       </Button>
                                     </div>
-                                    {isActive(connection) && definition.actions.map((action) => (
+                                    {isActive(connection) ? (
                                       <Button
-                                        key={action.id}
                                         variant="outline"
                                         size="sm"
                                         className="mt-3 w-full border-white/8 bg-white/[0.025]"
-                                        disabled={busy === `action:${connection.id}`}
-                                        onClick={() => void runAction(connection, action.id)}
+                                        onClick={() => setImportTarget({ definition, connection })}
                                       >
-                                        {busy === `action:${connection.id}` ? <LoaderCircle className="animate-spin" /> : <ShieldCheck />}
-                                        {action.label}
-                                        {action.readOnly ? <span className="ms-auto font-mono text-[7px] text-emerald-200/60">READ ONLY</span> : null}
+                                        <FileDown />
+                                        Use integration
+                                        <span className="ms-auto font-mono text-[7px] text-emerald-200/60">{supportsWrites ? "ACTION HUB" : "READ ONLY"}</span>
                                       </Button>
-                                    ))}
-                                    {result ? (
-                                      <div className="mt-3 rounded-lg border border-emerald-300/12 bg-emerald-300/5 p-2.5 text-[10px] text-emerald-50/75">
-                                        <p className="font-medium text-emerald-100">
-                                          {result.result.login ? `@${result.result.login}` : "Connection verified"}
-                                        </p>
-                                        {typeof result.result.public_repos === "number" ? (
-                                          <p className="mt-1">{result.result.public_repos} public repositories</p>
-                                        ) : null}
-                                        {result.result.html_url ? (
-                                          <a className="mt-2 inline-flex items-center gap-1 text-emerald-200 hover:text-white" href={result.result.html_url} target="_blank" rel="noreferrer">
-                                            Open GitHub profile <ExternalLink className="size-3" />
-                                          </a>
-                                        ) : null}
-                                      </div>
                                     ) : null}
                                   </div>
                                 );
@@ -527,7 +547,7 @@ export function IntegrationsMarketplace() {
                             </div>
                           ) : null}
                         </CardContent>
-                        <CardFooter className="mt-auto gap-2 border-white/7 bg-white/[0.018] px-5 py-3.5">
+                        <CardFooter className="mt-auto gap-2 border-white/7 bg-white/[0.018] px-4 py-3 sm:px-5 sm:py-3.5">
                           {activeConnections.length > 0 || serviceConnections.length > 0 ? (
                             <>
                               <Button variant="outline" className="flex-1 border-white/9 bg-black/20" onClick={() => setExpanded(isExpanded ? undefined : definition.slug)}>
@@ -575,18 +595,35 @@ export function IntegrationsMarketplace() {
         onOpenChange={setAccountOpen}
         onAuthenticated={(authenticated) => {
           try { localStorage.setItem(ACCOUNT_SESSION_MARKER, "1"); } catch { /* ignored */ }
-          setSession(authenticated);
-          setAccountOpen(false);
-          void loadMarketplace(authenticated.accessToken);
+          void activateAccountVault(authenticated.user.id, true).then(({ importedNotes }) => {
+            setSession(authenticated);
+            setAccountOpen(false);
+            if (importedNotes > 0) {
+              toast.success("Offline notes added to your account", {
+                description: `${importedNotes} local ${importedNotes === 1 ? "note is" : "notes are"} safe and ready to sync.`,
+              });
+            }
+            void loadMarketplace(authenticated.accessToken);
+          });
         }}
         onLoggedOut={() => {
           try { localStorage.removeItem(ACCOUNT_SESSION_MARKER); } catch { /* ignored */ }
+          endAccountVault();
           setSession(undefined);
           setDefinitions([]);
           setConnections([]);
         }}
         onSync={() => undefined}
       />
+
+      {importTarget && session ? (
+        <IntegrationImportDialog
+          definition={importTarget.definition}
+          connection={importTarget.connection}
+          session={session}
+          onClose={() => setImportTarget(undefined)}
+        />
+      ) : null}
 
       <AlertDialog open={Boolean(disconnectTarget)} onOpenChange={(open) => !open && setDisconnectTarget(undefined)}>
         <AlertDialogContent className="border-white/10 bg-[#120b0d]/98">
@@ -628,10 +665,31 @@ function SecurityLine({
 
 function MarketplaceLoading() {
   return (
-    <div className="my-12 grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-label="Loading integrations">
+    <div className="my-12 flex gap-3 overflow-hidden md:grid md:grid-cols-2 lg:grid-cols-3" aria-label="Loading integrations">
       {[0, 1, 2].map((item) => (
         <div key={item} className="h-64 animate-pulse rounded-2xl border border-white/7 bg-black/30" />
       ))}
     </div>
+  );
+}
+
+function IntegrationMark({
+  toolkit,
+  compact = false,
+  fallback: Fallback = Plug,
+}: {
+  toolkit: string;
+  compact?: boolean;
+  fallback?: typeof Plug;
+}) {
+  const mark = SERVICE_MARKS[toolkit];
+  const size = compact ? "size-5 rounded-md text-[8px]" : "size-11 rounded-xl text-sm";
+  return (
+    <span
+      className={`grid shrink-0 place-items-center border border-white/12 font-bold shadow-inner ${size} ${mark?.className ?? "bg-white/[0.045] text-ivory"}`}
+      aria-label={mark ? `${toolkit} logo` : undefined}
+    >
+      {mark ? mark.label : <Fallback className={compact ? "size-3" : "size-5"} />}
+    </span>
   );
 }

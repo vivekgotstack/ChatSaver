@@ -41,11 +41,64 @@ export interface ToolExecutionResult {
   action: string;
   successful: boolean;
   result: {
-    login?: string;
-    name?: string;
-    html_url?: string;
-    public_repos?: number;
+    items?: IntegrationSearchItem[];
+    document?: ImportedIntegrationDocument;
+    operation?: IntegrationOperationResult;
   };
+}
+
+export interface IntegrationOperationResult {
+  service: string;
+  message: string;
+  url?: string;
+}
+
+export interface IntegrationSearchItem {
+  id: string;
+  title: string;
+  subtitle?: string;
+  preview?: string;
+  reference: Record<string, string>;
+}
+
+export interface ImportedIntegrationDocument {
+  title: string;
+  content: string;
+  sourceLabel: string;
+  sourceUrl?: string;
+}
+
+export const PENDING_INTEGRATION_KEY = "chatsaver:integration-pending";
+export const INTEGRATION_CONNECTED_EVENT = "chatsaver:integration-connected";
+
+export interface PendingIntegrationAuthentication {
+  toolkit: string;
+  connectionId?: string;
+  startedAt: number;
+}
+
+export function rememberPendingIntegration(pending: PendingIntegrationAuthentication): void {
+  try { localStorage.setItem(PENDING_INTEGRATION_KEY, JSON.stringify(pending)); } catch { /* ignored */ }
+}
+
+export function readPendingIntegration(): PendingIntegrationAuthentication | undefined {
+  try {
+    const value = JSON.parse(localStorage.getItem(PENDING_INTEGRATION_KEY) ?? "null") as Partial<PendingIntegrationAuthentication> | null;
+    if (!value || typeof value.toolkit !== "string" || typeof value.startedAt !== "number") return undefined;
+    return { toolkit: value.toolkit, connectionId: value.connectionId, startedAt: value.startedAt };
+  } catch {
+    return undefined;
+  }
+}
+
+export function announceIntegrationConnected(connectionId: string, toolkit: string): void {
+  const detail = { type: INTEGRATION_CONNECTED_EVENT, connectionId, toolkit, completedAt: Date.now() };
+  try {
+    localStorage.removeItem(PENDING_INTEGRATION_KEY);
+    localStorage.setItem(INTEGRATION_CONNECTED_EVENT, JSON.stringify(detail));
+  } catch { /* ignored */ }
+  try { window.dispatchEvent(new CustomEvent(INTEGRATION_CONNECTED_EVENT, { detail })); } catch { /* ignored */ }
+  try { window.opener?.postMessage(detail, window.location.origin); } catch { /* ignored */ }
 }
 
 async function integrationRequest<T>(
@@ -130,13 +183,14 @@ export function executeIntegrationAction(
   accessToken: string,
   connectionId: string,
   action: string,
+  input: Record<string, string> = {},
 ): Promise<ToolExecutionResult> {
   return integrationRequest(
     `/api/v1/integrations/connections/${encodeURIComponent(connectionId)}/execute`,
     accessToken,
     {
       method: "POST",
-      body: JSON.stringify({ action, input: {} }),
+      body: JSON.stringify({ action, input }),
     },
   );
 }

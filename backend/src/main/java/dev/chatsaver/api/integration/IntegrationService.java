@@ -14,7 +14,7 @@ import dev.chatsaver.api.integration.IntegrationModels.IntegrationDefinition;
 import dev.chatsaver.api.integration.IntegrationModels.ToolExecutionResult;
 
 @Service
-final class IntegrationService {
+class IntegrationService {
 
     private final IntegrationProvider provider;
     private final IntegrationCatalog catalog;
@@ -69,11 +69,19 @@ final class IntegrationService {
             Map<String, Object> input) {
         rateLimiter.check(userId, "execute", 10);
         catalog.requireAction(action);
-        if (input != null && !input.isEmpty()) {
-            throw new IntegrationException(
-                    HttpStatus.BAD_REQUEST,
-                    "This read-only action does not accept input.");
+        Map<String, Object> safeInput = input == null ? Map.of() : input;
+        int maximumValueLength = switch (action) {
+            case "github-publish-backup", "github-create-backup-repo" -> 450_000;
+            case "slack-send-digest" -> 16_000;
+            default -> 2_048;
+        };
+        if (safeInput.size() > 8 || safeInput.entrySet().stream().anyMatch(entry ->
+                entry.getKey() == null
+                        || entry.getKey().length() > 32
+                        || !(entry.getValue() instanceof String value)
+                        || value.length() > maximumValueLength)) {
+            throw new IntegrationException(HttpStatus.BAD_REQUEST, "The integration input is invalid.");
         }
-        return provider.execute(userId, connectionId, action, Map.of());
+        return provider.execute(userId, connectionId, action, Map.copyOf(safeInput));
     }
 }

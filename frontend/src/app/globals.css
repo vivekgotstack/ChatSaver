@@ -79,6 +79,13 @@
     background: #070506;
   }
 
+  @media (display-mode: standalone) {
+    html,
+    body {
+      background: #050505 !important;
+    }
+  }
+
   button,
   input,
   textarea {

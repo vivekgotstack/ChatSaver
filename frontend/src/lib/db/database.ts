@@ -173,6 +173,78 @@ export function endAccountVault(): string {
   return switchLocalVault();
 }
 
+interface AccountVaultActivation {
+  databaseName: string;
+  importedNotes: number;
+}
+
+function guestBackupSignature(backup: VaultBackup): string {
+  const records = [
+    ...backup.conversations,
+    ...backup.messages,
+    ...backup.notes,
+    ...backup.noteBlocks,
+    ...backup.imports,
+  ];
+  return records
+    .map((record) => `${record.id}:${"updatedAt" in record ? record.updatedAt : "createdAt" in record ? record.createdAt : ""}`)
+    .sort()
+    .join("|");
+}
+
+/**
+ * Opens an account-scoped vault without abandoning work made as a guest.
+ * Guest records keep their IDs, are merged into the account vault, and are
+ * queued through the normal outbox so an existing cloud vault is merged too.
+ */
+export async function activateAccountVault(
+  userId: string,
+  freshSession = false,
+): Promise<AccountVaultActivation> {
+  const guestBackup = db.name === GUEST_VAULT ? await createVaultBackup() : undefined;
+  const databaseName = freshSession ? beginAccountVault(userId) : restoreAccountVault(userId);
+  if (!guestBackup) return { databaseName, importedNotes: 0 };
+
+  const hasGuestData = guestBackup.conversations.length > 0
+    || guestBackup.messages.length > 0
+    || guestBackup.notes.length > 0
+    || guestBackup.noteBlocks.length > 0
+    || guestBackup.imports.length > 0;
+  if (!hasGuestData) return { databaseName, importedNotes: 0 };
+
+  const signature = guestBackupSignature(guestBackup);
+  const completedMarkerKey = `chatsaver:guest-migration-complete:${userId}`;
+  const sessionMarkerKey = `chatsaver:guest-migration-session:${userId}`;
+  try {
+    if (localStorage.getItem(completedMarkerKey) === signature) {
+      return { databaseName, importedNotes: 0 };
+    }
+    const sessionMarker = JSON.parse(sessionStorage.getItem(sessionMarkerKey) ?? "null") as { signature?: string; databaseName?: string } | null;
+    if (sessionMarker?.signature === signature && sessionMarker.databaseName === databaseName) {
+      return { databaseName, importedNotes: 0 };
+    }
+  } catch {
+    // Storage restrictions must not prevent a lossless in-memory migration.
+  }
+
+  const importedNotes = await restoreVaultBackup(guestBackup);
+  try { sessionStorage.setItem(sessionMarkerKey, JSON.stringify({ signature, databaseName })); } catch { /* ignored */ }
+  return { databaseName, importedNotes };
+}
+
+/** Marks the guest snapshot as durable only after the normal cloud sync succeeds. */
+export function confirmGuestMigration(userId: string): void {
+  const sessionMarkerKey = `chatsaver:guest-migration-session:${userId}`;
+  try {
+    const marker = JSON.parse(sessionStorage.getItem(sessionMarkerKey) ?? "null") as { signature?: string; databaseName?: string } | null;
+    if (marker?.databaseName === db.name && typeof marker.signature === "string") {
+      localStorage.setItem(`chatsaver:guest-migration-complete:${userId}`, marker.signature);
+    }
+  } catch {
+    // A failed persistence marker only causes a safe, idempotent re-import.
+  }
+}
+
 export async function clearLocalVault(): Promise<void> {
   const databaseName = db.name;
   db.close();
@@ -520,6 +592,40 @@ export async function createBlankNote(format: ManualNoteFormat): Promise<string>
   return note.id;
 }
 
+export async function createMarkdownNote(title: string, content: string): Promise<string> {
+  const timestamp = now();
+  const safeTitle = toPlainText(title).trim().slice(0, 160) || "Imported note";
+  const note: Note = {
+    id: makeId(),
+    title: safeTitle,
+    source: "markdown",
+    isFavorite: false,
+    isArchived: false,
+    blockCount: 1,
+    searchText: normalizeSearchText(safeTitle, content),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    syncStatus: "pending",
+  };
+  const block: NoteBlock = {
+    id: makeId(),
+    noteId: note.id,
+    position: 0,
+    question: "",
+    answer: content,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    syncStatus: "pending",
+  };
+
+  await db.transaction("rw", [db.notes, db.noteBlocks, db.outbox], async () => {
+    await db.notes.add(note);
+    await db.noteBlocks.add(block);
+    await db.outbox.bulkAdd([queueCreate("note", note), queueCreate("noteBlock", block)]);
+  });
+  return note.id;
+}
+
 export async function addNoteBlock(noteId: string): Promise<string | undefined> {
   return db.transaction("rw", [db.notes, db.noteBlocks, db.outbox], async () => {
     const note = await db.notes.get(noteId);
@@ -815,6 +921,55 @@ export async function createVaultBackup(): Promise<VaultBackup> {
     noteBlocks,
     imports,
   };
+}
+
+export interface MarkdownVaultBackup {
+  content: string;
+  noteCount: number;
+  exportedAt: string;
+}
+
+export async function createMarkdownVaultBackup(): Promise<MarkdownVaultBackup> {
+  const backup = await createVaultBackup();
+  const blocksByNote = new Map<string, NoteBlock[]>();
+  for (const block of backup.noteBlocks) {
+    const blocks = blocksByNote.get(block.noteId) ?? [];
+    blocks.push(block);
+    blocksByNote.set(block.noteId, blocks);
+  }
+  const notes = backup.notes
+    .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  const lines = [
+    "# ChatSaver Knowledge Backup",
+    "",
+    `> Exported ${backup.exportedAt} · ${notes.length} ${notes.length === 1 ? "note" : "notes"} · Markdown-native and version controlled.`,
+    "",
+    "This repository is a portable knowledge backup generated by ChatSaver. Each update is committed through the connected GitHub account.",
+    "",
+    "## Contents",
+    "",
+    ...notes.map((note, index) => `${index + 1}. ${note.title.replace(/\r?\n/g, " ")}`),
+  ];
+
+  for (const [index, note] of notes.entries()) {
+    lines.push("", "---", "", `## ${index + 1}. ${note.title}`, "");
+    lines.push(`_Updated ${note.updatedAt} · ${note.source}${note.isArchived ? " · archived" : ""}_`, "");
+    const blocks = (blocksByNote.get(note.id) ?? []).toSorted((left, right) => left.position - right.position);
+    if (blocks.length === 0) {
+      lines.push("_This note has no content._");
+      continue;
+    }
+    for (const block of blocks) {
+      if (block.question.trim()) lines.push(`### ${block.question.trim()}`, "");
+      if (block.answer.trim()) lines.push(block.answer.trim(), "");
+    }
+  }
+
+  const content = lines.join("\n").trim() + "\n";
+  if (content.length > 440_000) {
+    throw new Error("This vault is too large for one GitHub Markdown file. Archive or split notes before publishing.");
+  }
+  return { content, noteCount: notes.length, exportedAt: backup.exportedAt };
 }
 
 function isVaultBackup(value: unknown): value is VaultBackup {

@@ -10,7 +10,7 @@ import dev.chatsaver.api.error.RequestAttributes;
 import jakarta.servlet.http.HttpServletRequest;
 
 @RestControllerAdvice
-final class IntegrationExceptionHandler {
+class IntegrationExceptionHandler {
 
     @ExceptionHandler(IntegrationException.class)
     ProblemDetail handle(IntegrationException exception, HttpServletRequest request) {
