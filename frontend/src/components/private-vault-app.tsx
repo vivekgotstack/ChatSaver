@@ -227,7 +227,7 @@ export function PrivateVaultApp() {
       if (!active) return;
       setSession(restored);
       try {
-        await synchronizePrivateVault(restored.accessToken);
+        await synchronizePrivateVault(restored.accessToken, restored.user.id);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Private Vault could not sync.");
       }
@@ -243,7 +243,7 @@ export function PrivateVaultApp() {
     if (!activeSession) throw new Error("Sign in to sync Private Vault.");
     setSyncing(true);
     try {
-      await synchronizePrivateVault(activeSession.accessToken);
+      await synchronizePrivateVault(activeSession.accessToken, activeSession.user.id);
       if (vaultKey) await loadItems(vaultKey);
       if (!quiet) toast.success("Private Vault synced", { description: "Encrypted data is backed up to your account." });
     } finally {
@@ -284,7 +284,7 @@ export function PrivateVaultApp() {
   useEffect(() => {
     if (!session) return;
     const retry = () => {
-      void synchronizePrivateVault(session.accessToken)
+      void synchronizePrivateVault(session.accessToken, session.user.id)
         .then(() => vaultKey ? loadItems(vaultKey) : undefined)
         .catch(() => { /* encrypted local changes retry on the next connection */ });
     };
@@ -313,7 +313,8 @@ export function PrivateVaultApp() {
       toast.error("The PIN confirmation does not match.");
       return;
     }
-    const key = await createPrivateVault(pin);
+    if (!session) throw new Error("Sign in before creating Private Vault.");
+    const key = await createPrivateVault(pin, session.user.id);
     try {
       await syncVault(session, true);
     } catch {

@@ -19,13 +19,17 @@ export interface PrivateVaultItem {
   updatedAt: string;
 }
 
-interface PrivateVaultMetadata {
-  key: typeof METADATA_KEY;
+interface PrivateVaultCloudMetadata {
   salt: string;
   verifierIv: string;
   verifierCiphertext: string;
   createdAt: string;
   updatedAt: string;
+}
+
+interface PrivateVaultMetadata extends PrivateVaultCloudMetadata {
+  key: typeof METADATA_KEY;
+  ownerUserId?: string;
 }
 
 interface EncryptedPrivateVaultItem {
@@ -42,7 +46,7 @@ interface PrivateVaultDeletion {
 }
 
 interface PrivateVaultCloudSnapshot {
-  metadata: Omit<PrivateVaultMetadata, "key"> | null;
+  metadata: PrivateVaultCloudMetadata | null;
   items: EncryptedPrivateVaultItem[];
   deleted: PrivateVaultDeletion[];
 }
@@ -151,7 +155,7 @@ export async function hasPrivateVault(): Promise<boolean> {
   return Boolean(await privateVaultDb.metadata.get(METADATA_KEY));
 }
 
-export async function createPrivateVault(pin: string): Promise<CryptoKey> {
+export async function createPrivateVault(pin: string, ownerUserId: string): Promise<CryptoKey> {
   if (await hasPrivateVault()) throw new Error("This Private Vault is already configured.");
   const salt = toBase64(bytes(24));
   const key = await keyFromPin(pin, salt);
@@ -164,6 +168,7 @@ export async function createPrivateVault(pin: string): Promise<CryptoKey> {
     verifierCiphertext: verifier.ciphertext,
     createdAt: timestamp,
     updatedAt: timestamp,
+    ownerUserId,
   });
   try { localStorage.removeItem(PRIVATE_VAULT_DISMISSED_KEY); } catch { /* ignored */ }
   return key;
@@ -333,24 +338,23 @@ async function cloudRequest<T>(path: string, accessToken: string, init: RequestI
   return text ? JSON.parse(text) as T : undefined as T;
 }
 
-function sameVault(left: PrivateVaultMetadata, right: Omit<PrivateVaultMetadata, "key">): boolean {
+function sameVault(left: PrivateVaultMetadata, right: PrivateVaultCloudMetadata): boolean {
   return left.salt === right.salt
     && left.verifierIv === right.verifierIv
     && left.verifierCiphertext === right.verifierCiphertext;
 }
 
-async function mergeCloudSnapshot(snapshot: PrivateVaultCloudSnapshot): Promise<void> {
+async function mergeCloudSnapshot(snapshot: PrivateVaultCloudSnapshot, ownerUserId: string): Promise<void> {
   await privateVaultDb.transaction(
     "rw",
     [privateVaultDb.metadata, privateVaultDb.items, privateVaultDb.deletions],
     async () => {
       const localMetadata = await privateVaultDb.metadata.get(METADATA_KEY);
       if (snapshot.metadata) {
-        if (localMetadata && !sameVault(localMetadata, snapshot.metadata)) {
-          throw new Error("This account has a different encrypted Private Vault. Reset this device's vault before syncing it.");
-        }
         if (!localMetadata) {
-          await privateVaultDb.metadata.put({ key: METADATA_KEY, ...snapshot.metadata });
+          await privateVaultDb.metadata.put({ key: METADATA_KEY, ownerUserId, ...snapshot.metadata });
+        } else if (localMetadata.ownerUserId !== ownerUserId) {
+          await privateVaultDb.metadata.put({ ...localMetadata, ownerUserId });
         }
       }
 
@@ -377,15 +381,39 @@ async function mergeCloudSnapshot(snapshot: PrivateVaultCloudSnapshot): Promise<
   );
 }
 
-export async function synchronizePrivateVault(accessToken: string): Promise<number> {
+export async function synchronizePrivateVault(accessToken: string, ownerUserId: string): Promise<number> {
   const initial = await cloudRequest<PrivateVaultCloudSnapshot>("/api/v1/private-vault", accessToken);
-  await mergeCloudSnapshot(initial);
+  const localMetadata = await privateVaultDb.metadata.get(METADATA_KEY);
+  const belongsToAnotherAccount = Boolean(
+    localMetadata?.ownerUserId && localMetadata.ownerUserId !== ownerUserId,
+  );
+  const cloudIsAuthoritative = Boolean(
+    localMetadata && initial.metadata && !sameVault(localMetadata, initial.metadata),
+  );
+  if (belongsToAnotherAccount || cloudIsAuthoritative) {
+    await privateVaultDb.transaction(
+      "rw",
+      [privateVaultDb.metadata, privateVaultDb.items, privateVaultDb.deletions],
+      async () => {
+        await Promise.all([
+          privateVaultDb.metadata.clear(),
+          privateVaultDb.items.clear(),
+          privateVaultDb.deletions.clear(),
+        ]);
+      },
+    );
+  } else if (localMetadata && localMetadata.ownerUserId !== ownerUserId) {
+    await privateVaultDb.metadata.put({ ...localMetadata, ownerUserId });
+  }
+
+  await mergeCloudSnapshot(initial, ownerUserId);
 
   const metadata = await privateVaultDb.metadata.get(METADATA_KEY);
   if (!metadata) return 0;
   if (!initial.metadata) {
-    const { key: _key, ...payload } = metadata;
+    const { key: _key, ownerUserId: _ownerUserId, ...payload } = metadata;
     void _key;
+    void _ownerUserId;
     await cloudRequest<void>("/api/v1/private-vault/metadata", accessToken, {
       method: "PUT",
       body: JSON.stringify(payload),
@@ -411,7 +439,7 @@ export async function synchronizePrivateVault(accessToken: string): Promise<numb
   }
 
   const finalSnapshot = await cloudRequest<PrivateVaultCloudSnapshot>("/api/v1/private-vault", accessToken);
-  await mergeCloudSnapshot(finalSnapshot);
+  await mergeCloudSnapshot(finalSnapshot, ownerUserId);
   return finalSnapshot.items.length;
 }
 
