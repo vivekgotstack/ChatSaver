@@ -99,6 +99,7 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
+  SheetTrigger,
 } from "@/components/ui/sheet";
 import {
   Tooltip,
@@ -155,6 +156,7 @@ const PAGE_SIZE = 12;
 const FALLBACK_SYNC_INTERVAL_MS = 2 * 60 * 1_000;
 const ACCOUNT_SESSION_MARKER = "chatsaver:account-session";
 const ROUTE_NOTE_HANDOFF_KEY = "chatsaver:route-note-handoff";
+const DASHBOARD_OVERRIDE_KEY = "chatsaver:dashboard-explicit";
 const EMPTY_PAGE: NotesPage = {
   items: [],
   page: 1,
@@ -162,6 +164,12 @@ const EMPTY_PAGE: NotesPage = {
   totalItems: 0,
   totalPages: 1,
 };
+
+function isLaptopWeb(): boolean {
+  if (typeof window === "undefined" || isTauriRuntime()) return false;
+  const mobileAgent = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+  return !mobileAgent && window.matchMedia("(min-width: 1024px) and (hover: hover) and (pointer: fine)").matches;
+}
 
 type DesktopPlatform = "windows" | "macos";
 
@@ -388,6 +396,7 @@ function CollectionNameDialog({
 }
 
 interface LibrarySidebarProps {
+  laptop?: boolean;
   page: NotesPage;
   selectedNoteId?: string;
   query: string;
@@ -470,6 +479,7 @@ function LibraryUnavailable({ detail }: { detail: string }) {
 }
 
 function LibrarySidebar({
+  laptop = false,
   page,
   selectedNoteId,
   query,
@@ -490,6 +500,49 @@ function LibrarySidebar({
   onCreate,
   onBrowseAll,
 }: LibrarySidebarProps) {
+  if (laptop) {
+    return (
+      <div className="sidebar-surface flex h-full min-h-0 flex-col overflow-hidden">
+        <div className="shrink-0 p-4 pb-3">
+          <button
+            type="button"
+            className="group w-full rounded-2xl border border-primary/25 bg-primary/[0.065] p-4 text-start shadow-[0_18px_50px_rgba(0,0,0,.18)] transition-colors hover:border-primary/50 hover:bg-primary/[0.1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            onClick={onBrowseAll}
+          >
+            <span className="flex items-center gap-3">
+              <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/16 text-primary"><MessageSquareText /></span>
+              <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-foreground">All chats</span><span className="mt-1 block text-[11px] leading-5 text-muted-foreground">Open the spacious conversation drawer</span></span>
+              <ChevronRight className="size-4 text-primary transition-transform group-hover:translate-x-0.5" />
+            </span>
+            <span className="mt-4 flex items-center justify-between border-t border-white/8 pt-3 font-mono text-[9px] uppercase tracking-wide text-muted-foreground"><span>{counts.all} conversations</span><span>Browse & search</span></span>
+          </button>
+        </div>
+
+        <section className="min-h-0 flex-1 px-3 py-3" aria-label="Collections">
+          <div className="mb-2 flex items-center justify-between px-2">
+            <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.17em] text-muted-foreground">Collections</p>
+            <Button variant="ghost" size="icon-sm" aria-label="Create collection" onClick={() => onEditCollection()}><FolderPlus /></Button>
+          </div>
+          <div className="h-full max-h-[calc(100%-2rem)] space-y-1 overflow-y-auto pe-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {collections.map((collection) => (
+              <div className="group flex items-center" key={collection.id}>
+                <Button variant={collectionId === collection.id ? "secondary" : "ghost"} className={`h-10 min-w-0 flex-1 justify-start ${collectionId === collection.id ? "" : "text-muted-foreground"}`} onClick={() => onCollectionChange(collection.id)}>
+                  <Folder /><span className="truncate">{collection.name}</span><span className="ms-auto font-mono text-[10px] text-muted-foreground">{collection.noteCount}</span>
+                </Button>
+                <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={`Manage ${collection.name}`}><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-40"><DropdownMenuItem onSelect={() => onEditCollection(collection)}><Pencil /> Rename</DropdownMenuItem><DropdownMenuItem variant="destructive" onSelect={() => onDeleteCollection(collection)}><Trash2 /> Delete</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+              </div>
+            ))}
+            {!collections.length ? <button type="button" className="w-full rounded-xl border border-dashed border-white/10 px-3 py-4 text-start text-[11px] leading-5 text-muted-foreground transition-colors hover:border-primary/25 hover:text-foreground" onClick={() => onEditCollection()}>+ Organize notes into a collection</button> : null}
+          </div>
+        </section>
+
+        <div className="shrink-0 border-t border-white/7 p-3">
+          <div className="rounded-xl border border-white/8 bg-black/20 p-3"><div className="flex items-center gap-2.5"><span className="grid size-9 place-items-center rounded-lg bg-primary/12 text-primary"><Database className="size-4" /></span><div className="min-w-0 flex-1"><p className="text-xs font-medium">Local vault</p><p className="font-mono text-[9px] uppercase tracking-wide text-muted-foreground">{stats.conversations} chats · {stats.pending} queued</p></div><span className="size-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.65)]" /></div></div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="sidebar-surface flex h-full min-h-0 flex-col overflow-x-hidden">
       <div className="shrink-0 px-4 pb-3 pt-4">
@@ -900,6 +953,7 @@ export function LibraryApp({
   const [collectionEditor, setCollectionEditor] = useState<NoteCollection | null | undefined>();
   const [deletingCollection, setDeletingCollection] = useState<NoteCollection>();
   const [isChatBrowserOpen, setIsChatBrowserOpen] = useState(false);
+  const [isMobileLibraryOpen, setIsMobileLibraryOpen] = useState(false);
   const [session, setSession] = useState<AuthSession>();
   const [vaultKey, setVaultKey] = useState(() => db.name);
   const [databaseState, setDatabaseState] = useState<
@@ -1034,6 +1088,10 @@ export function LibraryApp({
     else router.replace(path);
   }
 
+  function markDashboardExplicit() {
+    try { sessionStorage.setItem(DASHBOARD_OVERRIDE_KEY, "1"); } catch { /* route still opens */ }
+  }
+
   function openCollectionRoute(id: string) {
     const target = `/collections/?collection=${encodeURIComponent(id)}`;
     if (isTauriRuntime()) window.location.assign(target);
@@ -1111,7 +1169,9 @@ export function LibraryApp({
           changeVault(databaseName);
           setSession(restored);
           requestSync(restored, false);
-          if (!historyView) replaceLibraryRoute("/history");
+          let dashboardExplicit = false;
+          try { dashboardExplicit = sessionStorage.getItem(DASHBOARD_OVERRIDE_KEY) === "1"; } catch { /* ignored */ }
+          if (!historyView && !dashboardExplicit && isLaptopWeb()) replaceLibraryRoute("/history");
         });
       })
       .catch(() => {
@@ -1293,7 +1353,8 @@ export function LibraryApp({
       });
     }
     void runSync(authenticatedSession);
-    if (!historyView) replaceLibraryRoute("/history", intentionallyOpenNoteId);
+    try { sessionStorage.removeItem(DASHBOARD_OVERRIDE_KEY); } catch { /* ignored */ }
+    if (!historyView && isLaptopWeb()) replaceLibraryRoute("/history", intentionallyOpenNoteId);
   }
 
   function loggedOut() {
@@ -1318,6 +1379,7 @@ export function LibraryApp({
 
   function selectNote(noteId: string) {
     setSelectedNoteId(noteId);
+    setIsMobileLibraryOpen(false);
     setIsCommandOpen(false);
   }
 
@@ -1333,6 +1395,7 @@ export function LibraryApp({
     setPage(1);
     setSelectedNoteId(noteId);
     setIsNewNoteOpen(false);
+    setIsMobileLibraryOpen(false);
     setIsCommandOpen(false);
   }
 
@@ -1341,6 +1404,7 @@ export function LibraryApp({
     setCollectionId(undefined);
     setPage(1);
     setSelectedNoteId(undefined);
+    setIsMobileLibraryOpen(false);
   }
 
   const sidebarProps: LibrarySidebarProps = {
@@ -1373,6 +1437,16 @@ export function LibraryApp({
     onCreate: () => void createNote(),
     onBrowseAll: () => setIsChatBrowserOpen(true),
   };
+  const mobileSidebarProps: LibrarySidebarProps = {
+    ...sidebarProps,
+    onBrowseAll: () => {
+      setIsMobileLibraryOpen(false);
+      if (!historyView) {
+        if (isTauriRuntime()) window.location.assign("/history/");
+        else router.push("/history");
+      }
+    },
+  };
 
   if (databaseState.status === "loading") return <LibraryLoading />;
   if (databaseState.status === "error") {
@@ -1387,7 +1461,7 @@ export function LibraryApp({
         <div className="first-run-vignette" aria-hidden="true" />
 
         <header className="relative z-10 flex h-20 items-center justify-between px-5 sm:px-8 lg:px-12">
-          <Link className="flex items-center gap-3" href="/" aria-label="ChatSaver home">
+          <Link className="flex items-center gap-3" href="/" aria-label="ChatSaver home" onClick={markDashboardExplicit}>
             <Image
               src="/cs-transparent.png"
               alt=""
@@ -1580,13 +1654,15 @@ export function LibraryApp({
               <Link href="/history"><ArrowLeft /></Link>
             </Button>
           ) : (
-            <Button variant="outline" className="me-2 h-9 gap-2 px-2.5 sm:px-3" aria-label="Open all chats" onClick={() => setIsChatBrowserOpen(true)}>
-              <Menu />
-              <span className="hidden sm:inline">All chats</span>
-            </Button>
+            <div className="me-2 lg:hidden">
+              <Sheet open={isMobileLibraryOpen} onOpenChange={setIsMobileLibraryOpen}>
+                <SheetTrigger asChild><Button variant="outline" size="icon-lg" className="lg:hidden" aria-label="Open library navigation"><Menu /></Button></SheetTrigger>
+                <SheetContent side="left" className="w-screen max-w-none border-e-white/10 p-0 sm:w-[390px]"><SheetHeader className="sr-only"><SheetTitle>Library navigation</SheetTitle><SheetDescription>Browse notes, filters, and collections.</SheetDescription></SheetHeader><LibrarySidebar {...mobileSidebarProps} /></SheetContent>
+              </Sheet>
+            </div>
           )}
 
-          <Link className="flex items-center gap-2.5" href="/" aria-label="ChatSaver home">
+          <Link className="flex items-center gap-2.5" href="/" aria-label="ChatSaver home" onClick={markDashboardExplicit}>
             <Image
               src="/cs-transparent.png"
               alt=""
@@ -1723,7 +1799,7 @@ export function LibraryApp({
         <div className="flex min-h-0 flex-1">
           {!collectionRouteId ? (
             <aside className="hidden min-h-0 w-[322px] shrink-0 overflow-hidden border-e border-white/8 lg:block">
-              <LibrarySidebar {...sidebarProps} />
+              <LibrarySidebar {...sidebarProps} laptop />
             </aside>
           ) : null}
 
