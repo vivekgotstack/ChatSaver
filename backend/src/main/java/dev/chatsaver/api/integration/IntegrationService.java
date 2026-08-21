@@ -70,11 +70,16 @@ class IntegrationService {
         rateLimiter.check(userId, "execute", 10);
         catalog.requireAction(action);
         Map<String, Object> safeInput = input == null ? Map.of() : input;
+        int maximumValueLength = switch (action) {
+            case "github-publish-backup", "github-create-backup-repo" -> 450_000;
+            case "slack-send-digest" -> 16_000;
+            default -> 2_048;
+        };
         if (safeInput.size() > 8 || safeInput.entrySet().stream().anyMatch(entry ->
                 entry.getKey() == null
                         || entry.getKey().length() > 32
                         || !(entry.getValue() instanceof String value)
-                        || value.length() > 2048)) {
+                        || value.length() > maximumValueLength)) {
             throw new IntegrationException(HttpStatus.BAD_REQUEST, "The integration input is invalid.");
         }
         return provider.execute(userId, connectionId, action, Map.copyOf(safeInput));

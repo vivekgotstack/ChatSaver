@@ -43,7 +43,14 @@ export interface ToolExecutionResult {
   result: {
     items?: IntegrationSearchItem[];
     document?: ImportedIntegrationDocument;
+    operation?: IntegrationOperationResult;
   };
+}
+
+export interface IntegrationOperationResult {
+  service: string;
+  message: string;
+  url?: string;
 }
 
 export interface IntegrationSearchItem {
@@ -90,6 +97,7 @@ export function announceIntegrationConnected(connectionId: string, toolkit: stri
     localStorage.removeItem(PENDING_INTEGRATION_KEY);
     localStorage.setItem(INTEGRATION_CONNECTED_EVENT, JSON.stringify(detail));
   } catch { /* ignored */ }
+  try { window.dispatchEvent(new CustomEvent(INTEGRATION_CONNECTED_EVENT, { detail })); } catch { /* ignored */ }
   try { window.opener?.postMessage(detail, window.location.origin); } catch { /* ignored */ }
 }
 

@@ -17,13 +17,17 @@ public class IntegrationCatalog {
         return new IntegrationAction(id, label, description, true);
     }
 
+    private static IntegrationAction writeAction(String id, String label, String description) {
+        return new IntegrationAction(id, label, description, false);
+    }
+
     private static final List<IntegrationDefinition> DEFINITIONS = List.of(
             definition(
                     "googledrive",
                     "Google Drive",
                     "Storage",
-                    "Find selected Docs and files, then import them as editable knowledge notes.",
-                    List.of("Managed OAuth", "File search", "Read-only import"),
+                    "Find files, preserve them as notes, and turn source material into structured working briefs.",
+                    List.of("File search", "Editable import", "Working briefs"),
                     List.of(
                             action("drive-search", "Find files", "Search files you can access."),
                             action("drive-import", "Import file", "Import one selected file as a note."))),
@@ -31,8 +35,8 @@ public class IntegrationCatalog {
                     "gmail",
                     "Gmail",
                     "Communication",
-                    "Find a useful email or thread and preserve it as an editable knowledge note.",
-                    List.of("Managed OAuth", "Email search", "Read-only import"),
+                    "Capture useful email threads and turn them into action briefs with commitments and reply drafts.",
+                    List.of("Email search", "Thread capture", "Action briefs"),
                     List.of(
                             action("gmail-search", "Find email", "Search your mailbox."),
                             action("gmail-import-message", "Save email", "Save one selected email."),
@@ -41,15 +45,18 @@ public class IntegrationCatalog {
                     "github",
                     "GitHub",
                     "Developer tools",
-                    "Import a repository README, issue, pull request, or discussion from its URL.",
-                    List.of("Managed OAuth", "URL import", "Read-only access"),
-                    List.of(action("github-import", "Import from GitHub", "Import one supported GitHub URL."))),
+                    "Import repository knowledge or publish your ChatSaver vault as a versioned Markdown backup.",
+                    List.of("URL import", "README publishing", "Backup repository"),
+                    List.of(
+                            action("github-import", "Import from GitHub", "Import one supported GitHub URL."),
+                            writeAction("github-publish-backup", "Publish Markdown backup", "Commit a ChatSaver backup to an existing repository."),
+                            writeAction("github-create-backup-repo", "Create backup repository", "Create a repository and publish the first ChatSaver backup."))),
             definition(
                     "notion",
                     "Notion",
                     "Knowledge",
-                    "Find an authorized page and import it as editable Markdown in ChatSaver.",
-                    List.of("Managed OAuth", "Page search", "Read-only import"),
+                    "Bring authorized pages into ChatSaver as editable Markdown or structured decision-ready briefs.",
+                    List.of("Page search", "Markdown import", "Working briefs"),
                     List.of(
                             action("notion-search", "Find pages", "Search authorized Notion pages."),
                             action("notion-import", "Import page", "Import one selected page."))),
@@ -57,11 +64,12 @@ public class IntegrationCatalog {
                     "slack",
                     "Slack",
                     "Communication",
-                    "Find a useful message and save its conversation thread as a knowledge note.",
-                    List.of("Managed OAuth", "Message search", "Read-only thread import"),
+                    "Capture decisions from Slack and deliberately publish a ChatSaver knowledge digest to a channel.",
+                    List.of("Message search", "Decision workspace", "Digest publishing"),
                     List.of(
                             action("slack-search", "Find messages", "Search messages you can access."),
-                            action("slack-import-thread", "Save thread", "Save the selected Slack thread."))),
+                            action("slack-import-thread", "Save thread", "Save the selected Slack thread."),
+                            writeAction("slack-send-digest", "Publish vault digest", "Send a concise ChatSaver vault digest to one channel."))),
             definition(
                     "linkedin",
                     "LinkedIn",

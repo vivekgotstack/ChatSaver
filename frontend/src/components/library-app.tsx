@@ -25,7 +25,6 @@ import {
   Menu,
   MessageSquareText,
   Plus,
-  Plug,
   RotateCcw,
   Search,
   Settings2,
@@ -43,6 +42,7 @@ import type {
 } from "@/domain/models";
 import { NoteEditor } from "@/components/note-editor";
 import { AccountDialog } from "@/components/account-dialog";
+import { ConnectedIntegrationsShortcut } from "@/components/connected-integrations-shortcut";
 import {
   activateAccountVault,
   confirmGuestMigration,
@@ -997,11 +997,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
             <DesktopInstallButton />
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button asChild variant="ghost" size="icon-lg" aria-label="Open integrations">
-                  <Link href="/integrations">
-                    <Plug />
-                  </Link>
-                </Button>
+                <ConnectedIntegrationsShortcut accessToken={session?.accessToken} />
               </TooltipTrigger>
               <TooltipContent>Connect your tools</TooltipContent>
             </Tooltip>
@@ -1207,11 +1203,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
           <div className="ms-auto flex items-center gap-2">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button asChild variant="ghost" size="icon-lg" aria-label="Open integrations">
-                  <Link href="/integrations">
-                    <Plug />
-                  </Link>
-                </Button>
+                <ConnectedIntegrationsShortcut accessToken={session?.accessToken} />
               </TooltipTrigger>
               <TooltipContent>Integrations</TooltipContent>
             </Tooltip>

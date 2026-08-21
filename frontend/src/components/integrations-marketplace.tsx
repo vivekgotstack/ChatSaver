@@ -375,7 +375,7 @@ export function IntegrationsMarketplace() {
             <div className="grid content-start gap-3 rounded-2xl border border-white/8 bg-black/28 p-4 sm:p-5">
               <SecurityLine icon={Lock} title="Credentials stay isolated" detail="Composio stores and refreshes provider tokens." />
               <SecurityLine icon={UserCheck} title="Bound to your account" detail="Every connection is scoped to your ChatSaver UUID." />
-              <SecurityLine icon={ShieldCheck} title="Approved actions only" detail="Search and import are read-only, explicit, and provider-scoped." />
+              <SecurityLine icon={ShieldCheck} title="Approved actions only" detail="Imports stay read-only; scoped write actions require a separate confirmation." />
             </div>
           </section>
 
@@ -442,24 +442,28 @@ export function IntegrationsMarketplace() {
                   No integrations match this view.
                 </div>
               ) : (
-                <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-label="Integration marketplace">
+                <section
+                  className="mt-6 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-3 md:grid md:grid-cols-2 md:overflow-visible md:pb-0 lg:grid-cols-3"
+                  aria-label="Integration marketplace"
+                >
                   {visibleDefinitions.map((definition) => {
                     const Icon = SERVICE_ICONS[definition.slug as keyof typeof SERVICE_ICONS] ?? Plug;
                     const serviceConnections = connectionMap.get(definition.slug) ?? [];
                     const activeConnections = serviceConnections.filter(isActive);
+                    const supportsWrites = definition.actions.some((action) => !action.readOnly);
                     const isExpanded = expanded === definition.slug;
                     const isPending = pending?.toolkit === definition.slug;
                     return (
-                      <Card key={definition.slug} className="border border-white/8 bg-black/42 py-0 shadow-[0_22px_60px_rgba(0,0,0,.25)] backdrop-blur-xl transition-colors hover:border-white/14">
-                        <CardHeader className="px-5 pt-5">
-                          <div className="mb-4 flex items-center gap-3">
+                      <Card key={definition.slug} className="min-w-[min(78vw,280px)] snap-start border border-white/8 bg-black/42 py-0 shadow-[0_22px_60px_rgba(0,0,0,.25)] backdrop-blur-xl transition-colors hover:border-white/14 md:min-w-0">
+                        <CardHeader className="px-4 pt-4 sm:px-5 sm:pt-5">
+                          <div className="mb-3 flex items-center gap-3 sm:mb-4">
                             <IntegrationMark toolkit={definition.slug} fallback={Icon} />
                             <Badge variant="outline" className="border-white/8 bg-black/25 font-mono text-[8px] uppercase tracking-[0.12em] text-white/45">
                               {definition.category}
                             </Badge>
                           </div>
                           <CardTitle className="text-lg tracking-[-0.035em]">{definition.name}</CardTitle>
-                          <CardDescription className="min-h-10 text-xs leading-5 text-white/48">
+                          <CardDescription className="hidden min-h-10 text-xs leading-5 text-white/48 sm:block">
                             {definition.description}
                           </CardDescription>
                           <CardAction>
@@ -471,8 +475,8 @@ export function IntegrationsMarketplace() {
                             ) : null}
                           </CardAction>
                         </CardHeader>
-                        <CardContent className="px-5 pb-5">
-                          <div className="flex flex-wrap gap-1.5">
+                        <CardContent className="px-4 pb-4 sm:px-5 sm:pb-5">
+                          <div className="hidden flex-wrap gap-1.5 sm:flex">
                             {definition.capabilities.map((capability) => (
                               <span key={capability} className="rounded-md border border-white/7 bg-white/[0.025] px-2 py-1 text-[9px] text-white/42">
                                 {capability}
@@ -486,7 +490,7 @@ export function IntegrationsMarketplace() {
                               onClick={() => setImportTarget({ definition, connection: activeConnections[0] })}
                             >
                               <FileDown />
-                              Import knowledge
+                              Use integration
                             </Button>
                           ) : null}
 
@@ -522,8 +526,8 @@ export function IntegrationsMarketplace() {
                                         onClick={() => setImportTarget({ definition, connection })}
                                       >
                                         <FileDown />
-                                        Import knowledge
-                                        <span className="ms-auto font-mono text-[7px] text-emerald-200/60">READ ONLY</span>
+                                        Use integration
+                                        <span className="ms-auto font-mono text-[7px] text-emerald-200/60">{supportsWrites ? "ACTION HUB" : "READ ONLY"}</span>
                                       </Button>
                                     ) : null}
                                   </div>
@@ -543,7 +547,7 @@ export function IntegrationsMarketplace() {
                             </div>
                           ) : null}
                         </CardContent>
-                        <CardFooter className="mt-auto gap-2 border-white/7 bg-white/[0.018] px-5 py-3.5">
+                        <CardFooter className="mt-auto gap-2 border-white/7 bg-white/[0.018] px-4 py-3 sm:px-5 sm:py-3.5">
                           {activeConnections.length > 0 || serviceConnections.length > 0 ? (
                             <>
                               <Button variant="outline" className="flex-1 border-white/9 bg-black/20" onClick={() => setExpanded(isExpanded ? undefined : definition.slug)}>
@@ -661,7 +665,7 @@ function SecurityLine({
 
 function MarketplaceLoading() {
   return (
-    <div className="my-12 grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-label="Loading integrations">
+    <div className="my-12 flex gap-3 overflow-hidden md:grid md:grid-cols-2 lg:grid-cols-3" aria-label="Loading integrations">
       {[0, 1, 2].map((item) => (
         <div key={item} className="h-64 animate-pulse rounded-2xl border border-white/7 bg-black/30" />
       ))}
