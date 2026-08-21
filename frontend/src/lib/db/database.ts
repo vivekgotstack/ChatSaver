@@ -173,6 +173,78 @@ export function endAccountVault(): string {
   return switchLocalVault();
 }
 
+interface AccountVaultActivation {
+  databaseName: string;
+  importedNotes: number;
+}
+
+function guestBackupSignature(backup: VaultBackup): string {
+  const records = [
+    ...backup.conversations,
+    ...backup.messages,
+    ...backup.notes,
+    ...backup.noteBlocks,
+    ...backup.imports,
+  ];
+  return records
+    .map((record) => `${record.id}:${"updatedAt" in record ? record.updatedAt : "createdAt" in record ? record.createdAt : ""}`)
+    .sort()
+    .join("|");
+}
+
+/**
+ * Opens an account-scoped vault without abandoning work made as a guest.
+ * Guest records keep their IDs, are merged into the account vault, and are
+ * queued through the normal outbox so an existing cloud vault is merged too.
+ */
+export async function activateAccountVault(
+  userId: string,
+  freshSession = false,
+): Promise<AccountVaultActivation> {
+  const guestBackup = db.name === GUEST_VAULT ? await createVaultBackup() : undefined;
+  const databaseName = freshSession ? beginAccountVault(userId) : restoreAccountVault(userId);
+  if (!guestBackup) return { databaseName, importedNotes: 0 };
+
+  const hasGuestData = guestBackup.conversations.length > 0
+    || guestBackup.messages.length > 0
+    || guestBackup.notes.length > 0
+    || guestBackup.noteBlocks.length > 0
+    || guestBackup.imports.length > 0;
+  if (!hasGuestData) return { databaseName, importedNotes: 0 };
+
+  const signature = guestBackupSignature(guestBackup);
+  const completedMarkerKey = `chatsaver:guest-migration-complete:${userId}`;
+  const sessionMarkerKey = `chatsaver:guest-migration-session:${userId}`;
+  try {
+    if (localStorage.getItem(completedMarkerKey) === signature) {
+      return { databaseName, importedNotes: 0 };
+    }
+    const sessionMarker = JSON.parse(sessionStorage.getItem(sessionMarkerKey) ?? "null") as { signature?: string; databaseName?: string } | null;
+    if (sessionMarker?.signature === signature && sessionMarker.databaseName === databaseName) {
+      return { databaseName, importedNotes: 0 };
+    }
+  } catch {
+    // Storage restrictions must not prevent a lossless in-memory migration.
+  }
+
+  const importedNotes = await restoreVaultBackup(guestBackup);
+  try { sessionStorage.setItem(sessionMarkerKey, JSON.stringify({ signature, databaseName })); } catch { /* ignored */ }
+  return { databaseName, importedNotes };
+}
+
+/** Marks the guest snapshot as durable only after the normal cloud sync succeeds. */
+export function confirmGuestMigration(userId: string): void {
+  const sessionMarkerKey = `chatsaver:guest-migration-session:${userId}`;
+  try {
+    const marker = JSON.parse(sessionStorage.getItem(sessionMarkerKey) ?? "null") as { signature?: string; databaseName?: string } | null;
+    if (marker?.databaseName === db.name && typeof marker.signature === "string") {
+      localStorage.setItem(`chatsaver:guest-migration-complete:${userId}`, marker.signature);
+    }
+  } catch {
+    // A failed persistence marker only causes a safe, idempotent re-import.
+  }
+}
+
 export async function clearLocalVault(): Promise<void> {
   const databaseName = db.name;
   db.close();

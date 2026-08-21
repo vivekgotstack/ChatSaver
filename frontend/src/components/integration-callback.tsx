@@ -7,7 +7,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, CheckCircle2, LoaderCircle, Lock, Plug, TriangleAlert } from "lucide-react";
 import { AccountDialog } from "@/components/account-dialog";
 import { Button } from "@/components/ui/button";
-import { completeIntegrationAuthentication } from "@/lib/integrations";
+import {
+  announceIntegrationConnected,
+  completeIntegrationAuthentication,
+  listIntegrationConnections,
+  readPendingIntegration,
+} from "@/lib/integrations";
 import { refreshAccount, type AuthSession } from "@/lib/sync";
 
 const ACCOUNT_SESSION_MARKER = "chatsaver:account-session";
@@ -25,19 +30,42 @@ export function IntegrationCallback() {
   const sessionUri = searchParams.get("session_uri");
   const [session, setSession] = useState<AuthSession>();
   const [accountOpen, setAccountOpen] = useState(false);
-  const [state, setState] = useState<CallbackState>(() => sessionUri
-    ? { status: "restoring" }
-    : { status: "error", message: "This authorization return is missing its secure session." });
+  const [state, setState] = useState<CallbackState>({ status: "restoring" });
   const completionStarted = useRef(false);
 
   const finish = useCallback(async (currentSession: AuthSession) => {
-    if (!sessionUri || completionStarted.current) return;
+    if (completionStarted.current) return;
     completionStarted.current = true;
     setState({ status: "completing" });
     try {
-      const completed = await completeIntegrationAuthentication(currentSession.accessToken, sessionUri);
+      let completed: { connectionId: string; toolkit: string };
+      if (sessionUri) {
+        completed = await completeIntegrationAuthentication(currentSession.accessToken, sessionUri);
+      } else {
+        const pending = readPendingIntegration();
+        const callbackConnectionId = searchParams.get("connected_account_id") ?? searchParams.get("connection_id") ?? undefined;
+        const expectedId = callbackConnectionId ?? pending?.connectionId;
+        const expectedToolkit = pending?.toolkit;
+        let connected;
+        for (let attempt = 0; attempt < 12 && !connected; attempt += 1) {
+          const connections = await listIntegrationConnections(currentSession.accessToken);
+          connected = connections.find((connection) => connection.status === "ACTIVE" && (
+            expectedId ? connection.id === expectedId : expectedToolkit ? connection.toolkit === expectedToolkit : false
+          ));
+          if (!connected && attempt < 11) await new Promise((resolve) => window.setTimeout(resolve, 500));
+        }
+        if (!connected) throw new Error("The provider finished, but ChatSaver could not verify the connected account yet. Return and refresh once.");
+        completed = { connectionId: connected.id, toolkit: connected.toolkit };
+      }
+      announceIntegrationConnected(completed.connectionId, completed.toolkit);
       setState({ status: "complete", toolkit: completed.toolkit });
-      window.setTimeout(() => router.replace("/integrations"), 1_800);
+      window.setTimeout(() => {
+        if (window.opener && !window.opener.closed) {
+          window.opener.focus();
+          window.close();
+        }
+        router.replace("/integrations");
+      }, 900);
     } catch (error) {
       completionStarted.current = false;
       setState({
@@ -45,12 +73,9 @@ export function IntegrationCallback() {
         message: error instanceof Error ? error.message : "The integration could not be confirmed.",
       });
     }
-  }, [router, sessionUri]);
+  }, [router, searchParams, sessionUri]);
 
   useEffect(() => {
-    if (!sessionUri) {
-      return;
-    }
     let hasSession = false;
     try {
       hasSession = localStorage.getItem(ACCOUNT_SESSION_MARKER) === "1";
@@ -112,8 +137,8 @@ export function IntegrationCallback() {
         <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-white/50">
           {state.status === "restoring" ? "Checking the signed-in ChatSaver account before authorization continues."
             : state.status === "sign-in" ? "Sign in to the same ChatSaver account that started this authorization."
-              : state.status === "completing" ? "Matching this OAuth return to your private ChatSaver user ID."
-                : state.status === "complete" ? `${state.toolkit} is ready. Returning to your integration studio…`
+            : state.status === "completing" ? "Verifying the authorized account and matching it to your private ChatSaver user ID."
+                : state.status === "complete" ? `${state.toolkit} is ready. This window will close automatically…`
                   : state.message}
         </p>
 
@@ -124,7 +149,7 @@ export function IntegrationCallback() {
           </Button>
         ) : state.status === "error" ? (
           <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
-            {session && sessionUri ? (
+            {session ? (
               <Button onClick={() => void finish(session)}>
                 <Plug />
                 Try again

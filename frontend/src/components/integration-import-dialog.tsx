@@ -107,18 +107,18 @@ export function IntegrationImportDialog({
 
   if (!workflow) return null;
 
-  async function saveDocument(document: ImportedIntegrationDocument) {
+  async function saveDocument(document: ImportedIntegrationDocument, content = document.content, title = document.title) {
     const source = document.sourceUrl
       ? `> Imported from [${document.sourceLabel}](${document.sourceUrl})\n\n`
       : `> Imported from ${document.sourceLabel}\n\n`;
-    const noteId = await createMarkdownNote(document.title, `${source}${document.content}`);
+    const noteId = await createMarkdownNote(title, `${source}${content}`);
     setSavedNoteId(noteId);
     void synchronizeVault(session.accessToken, session.user.id).catch(() => {
       toast.info("Saved locally", { description: "The note will sync with the next vault sync." });
     });
   }
 
-  async function submit() {
+  async function submit(buildInsightWorkspace = false) {
     if (!canSubmit) return;
     setBusy("submit");
     setError(undefined);
@@ -131,7 +131,11 @@ export function IntegrationImportDialog({
           { url: value.trim() },
         );
         if (!result.result.document) throw new Error("GitHub did not return importable content.");
-        await saveDocument(result.result.document);
+        const document = result.result.document;
+        const enriched = definition.slug === "linkedin" && buildInsightWorkspace
+          ? `${document.content}\n\n---\n\n## Insight workspace\n\n### Key takeaways\n\n- \n- \n- \n\n### Why this matters to my work\n\n\n\n### Ideas to apply or discuss\n\n- [ ] \n- [ ] \n\n### My response draft\n\n`
+          : document.content;
+        await saveDocument(document, enriched, buildInsightWorkspace ? `Insights · ${document.title}` : document.title);
         return;
       }
       const result = await executeIntegrationAction(
@@ -149,8 +153,8 @@ export function IntegrationImportDialog({
     }
   }
 
-  async function saveLinkedInProfile() {
-    setBusy("profile");
+  async function saveLinkedInProfile(buildCareerWorkspace = false) {
+    setBusy(buildCareerWorkspace ? "career" : "profile");
     setError(undefined);
     try {
       const result = await executeIntegrationAction(
@@ -159,7 +163,13 @@ export function IntegrationImportDialog({
         "linkedin-import-profile",
       );
       if (!result.result.document) throw new Error("LinkedIn did not return profile data.");
-      await saveDocument(result.result.document);
+      const document = result.result.document;
+      if (buildCareerWorkspace) {
+        const workspace = `${document.content}\n\n---\n\n## Professional positioning\n\n### The value I create\n\n\n\n### Proof points and outcomes\n\n- \n- \n- \n\n### Skills to foreground\n\n- \n- \n\n## Profile improvement checklist\n\n- [ ] Make the headline outcome-focused\n- [ ] Add measurable results to recent experience\n- [ ] Align About, headline, and featured work\n- [ ] Add a clear invitation to connect\n\n## Next career actions\n\n- [ ] \n- [ ] `;
+        await saveDocument(document, workspace, "LinkedIn career workspace");
+      } else {
+        await saveDocument(document);
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The LinkedIn profile could not be imported.");
     } finally {
@@ -219,21 +229,21 @@ export function IntegrationImportDialog({
         ) : (
           <div className="space-y-5 px-5 py-5 sm:px-6">
             {definition.slug === "linkedin" ? (
-              <section className="flex flex-col gap-3 rounded-xl border border-white/8 bg-white/[0.025] p-4 sm:flex-row sm:items-center sm:justify-between">
+              <section className="grid gap-4 rounded-xl border border-[#0a66c2]/30 bg-[#0a66c2]/8 p-4">
                 <div>
-                  <h3 className="text-sm font-medium text-white/90">My professional profile</h3>
-                  <p className="mt-1 text-xs leading-5 text-white/48">Save a private, editable snapshot of your connected profile.</p>
+                  <h3 className="text-sm font-medium text-white/90">LinkedIn professional toolkit</h3>
+                  <p className="mt-1 text-xs leading-5 text-white/48">Turn your connected profile into something you can actively improve and use.</p>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="shrink-0 border-white/10 bg-black/25"
-                  disabled={Boolean(busy)}
-                  onClick={() => void saveLinkedInProfile()}
-                >
-                  {busy === "profile" ? <LoaderCircle className="animate-spin" /> : <FileDown />}
-                  Save my profile
-                </Button>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button type="button" variant="outline" className="border-white/10 bg-black/25" disabled={Boolean(busy)} onClick={() => void saveLinkedInProfile()}>
+                    {busy === "profile" ? <LoaderCircle className="animate-spin" /> : <FileDown />}
+                    Save profile snapshot
+                  </Button>
+                  <Button type="button" className="bg-[#0a66c2] text-white hover:bg-[#0a66c2]/85" disabled={Boolean(busy)} onClick={() => void saveLinkedInProfile(true)}>
+                    {busy === "career" ? <LoaderCircle className="animate-spin" /> : <FileDown />}
+                    Build career workspace
+                  </Button>
+                </div>
               </section>
             ) : null}
 
@@ -261,6 +271,12 @@ export function IntegrationImportDialog({
                   {busy === "submit" ? <LoaderCircle className="animate-spin" /> : workflow.mode === "url" ? <FileDown /> : <Search />}
                   {workflow.submitLabel}
                 </Button>
+                {definition.slug === "linkedin" ? (
+                  <Button type="button" variant="outline" className="h-11 border-[#0a66c2]/35 bg-[#0a66c2]/8 sm:min-w-44" disabled={!canSubmit} onClick={() => void submit(true)}>
+                    {busy === "submit" ? <LoaderCircle className="animate-spin" /> : <FileDown />}
+                    Build insight workspace
+                  </Button>
+                ) : null}
               </div>
             </form>
 
