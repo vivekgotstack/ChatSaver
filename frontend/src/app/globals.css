@@ -392,3 +392,18 @@
     animation-iteration-count: 1 !important;
   }
 }
+
+.library-notes-scroll [data-slot="scroll-area-scrollbar"] {
+  display: none;
+}
+
+.library-notes-scroll [data-slot="scroll-area-viewport"],
+.library-collections-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.library-notes-scroll [data-slot="scroll-area-viewport"]::-webkit-scrollbar,
+.library-collections-scroll::-webkit-scrollbar {
+  display: none;
+}

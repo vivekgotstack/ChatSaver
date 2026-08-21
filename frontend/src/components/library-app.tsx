@@ -8,6 +8,7 @@ import { useDeferredValue, useEffect, useEffectEvent, useRef, useState } from "r
 import {
   AlertTriangle,
   Archive,
+  ArrowLeft,
   ArrowRight,
   BookOpenText,
   ChevronLeft,
@@ -61,9 +62,11 @@ import {
   getLibraryCounts,
   queryNotesPage,
   renameCollection,
+  toggleNoteCollection,
 } from "@/lib/db/database";
 import { useLiveQuery } from "@/hooks/use-live-query";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   CommandDialog,
@@ -488,7 +491,7 @@ function LibrarySidebar({
   onCreate,
 }: LibrarySidebarProps) {
   return (
-    <div className="sidebar-surface flex h-full min-h-0 flex-col">
+    <div className="sidebar-surface flex h-full min-h-0 flex-col overflow-x-hidden">
       <div className="shrink-0 px-4 pb-3 pt-4">
         <Button className="royal-glow h-10 w-full justify-start gap-2" onClick={onCreate}>
           <Plus />
@@ -551,7 +554,7 @@ function LibrarySidebar({
             <FolderPlus />
           </Button>
         </div>
-        <div className="max-h-28 space-y-1 overflow-y-auto pe-1">
+        <div className="library-collections-scroll max-h-28 space-y-1 overflow-x-hidden overflow-y-auto pe-1">
           {collections.map((collection) => (
             <div className="group flex items-center" key={collection.id}>
               <Button
@@ -622,7 +625,7 @@ function LibrarySidebar({
         </Select>
       </div>
 
-      <ScrollArea className="min-h-0 flex-1 overflow-hidden px-2">
+      <ScrollArea className="library-notes-scroll min-h-0 flex-1 overflow-hidden px-2">
         <div className="space-y-1 px-1 pb-4">
           {page.items.map((note) => (
             <Button
@@ -720,11 +723,106 @@ function LibrarySidebar({
   );
 }
 
-export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
+function ResourceOverview({
+  title,
+  description,
+  page,
+  collection,
+  onSelect,
+  onCreate,
+  onPageChange,
+}: {
+  title: string;
+  description: string;
+  page: NotesPage;
+  collection?: NoteCollection;
+  onSelect: (noteId: string) => void;
+  onCreate: () => void;
+  onPageChange: (page: number) => void;
+}) {
+  return (
+    <main className="editor-scrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+      <div className="mx-auto w-full max-w-6xl px-4 py-7 sm:px-7 sm:py-9 lg:px-10">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <Badge variant="outline" className="border-primary/25 bg-primary/8">
+              {collection ? <Folder /> : <MessageSquareText />}
+              {collection ? "Custom collection" : "Conversation library"}
+            </Badge>
+            <h1 className="mt-4 break-words text-3xl font-semibold tracking-[-0.045em] sm:text-4xl">
+              {title}
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+              {description}
+            </p>
+          </div>
+          <Button className="royal-glow shrink-0" onClick={onCreate}>
+            <Plus /> New note
+          </Button>
+        </div>
+
+        {page.items.length ? (
+          <div className="mt-7 grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {page.items.map((note) => (
+              <button
+                type="button"
+                key={note.id}
+                className="group min-w-0 rounded-2xl border border-white/8 bg-black/20 p-4 text-start transition-colors hover:border-primary/25 hover:bg-primary/[0.045] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                onClick={() => onSelect(note.id)}
+              >
+                <span className="flex items-start gap-3">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-white/8 bg-white/[0.035] text-primary">
+                    {note.isFavorite ? <Star className="size-4 fill-current" /> : <BookOpenText className="size-4" />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block break-words text-sm font-semibold text-foreground">{note.title}</span>
+                    <span className="mt-2 flex flex-wrap items-center gap-1.5 font-mono text-[9px] uppercase tracking-wide text-muted-foreground">
+                      {note.blockCount} block{note.blockCount === 1 ? "" : "s"}
+                      <span className="size-0.5 rounded-full bg-current" />
+                      {note.source === "chatgpt" ? "Imported chat" : note.source === "markdown" ? "Markdown" : "Q&A"}
+                    </span>
+                  </span>
+                  <ChevronRight className="mt-2 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+                </span>
+                <span className="mt-4 block border-t border-white/7 pt-3 text-[11px] text-muted-foreground">
+                  Updated {new Date(note.updatedAt).toLocaleDateString()}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-8 rounded-3xl border border-dashed border-white/10 bg-black/15 px-5 py-14 text-center">
+            <Folder className="mx-auto size-7 text-primary" />
+            <h2 className="mt-4 text-lg font-semibold">{collection ? "This collection is empty" : "No conversations yet"}</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+              {collection ? "Open any note and use its folder button to add it here." : "Import a chat or create a note to start your visible history."}
+            </p>
+          </div>
+        )}
+
+        {page.totalPages > 1 ? (
+          <div className="mt-7 flex items-center justify-center gap-3">
+            <Button variant="outline" size="icon-sm" disabled={page.page <= 1} aria-label="Previous page" onClick={() => onPageChange(page.page - 1)}><ChevronLeft /></Button>
+            <span className="font-mono text-[9px] uppercase tracking-wide text-muted-foreground">Page {page.page} of {page.totalPages}</span>
+            <Button variant="outline" size="icon-sm" disabled={page.page >= page.totalPages} aria-label="Next page" onClick={() => onPageChange(page.page + 1)}><ChevronRight /></Button>
+          </div>
+        ) : null}
+      </div>
+    </main>
+  );
+}
+
+export function LibraryApp({
+  historyView = false,
+  collectionRouteId,
+}: {
+  historyView?: boolean;
+  collectionRouteId?: string;
+}) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<LibraryFilter>("all");
-  const [collectionId, setCollectionId] = useState<string>();
+  const [collectionId, setCollectionId] = useState<string | undefined>(collectionRouteId);
   const [sort, setSort] = useState<NoteSort>("updated-desc");
   const [page, setPage] = useState(1);
   const [selectedNoteId, setSelectedNoteId] = useState<string>();
@@ -783,6 +881,9 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
     [vaultKey],
     [] as CollectionSummary[],
   );
+  const activeCollection = collectionRouteId
+    ? collections.find((item) => item.id === collectionRouteId)
+    : undefined;
   const commandNotes = useLiveQuery(
     () => db.notes.orderBy("updatedAt").reverse().filter((note) => !note.isArchived).limit(50).toArray(),
     [vaultKey],
@@ -822,6 +923,14 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
   });
 
   useEffect(() => {
+    if (!collectionRouteId) return;
+    setCollectionId(collectionRouteId);
+    setFilter("all");
+    setPage(1);
+    setSelectedNoteId(undefined);
+  }, [collectionRouteId]);
+
+  useEffect(() => {
     function handleDesktopAction(event: Event) {
       const action = (event as CustomEvent<DesktopAction>).detail;
       if (action === "devices") setIsAccountOpen(true);
@@ -844,7 +953,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
     // dependency would not change, so the database effect could not run again.
     if (nextVaultKey === vaultKey) return;
     setDatabaseState({ status: "loading" });
-    setCollectionId(undefined);
+    setCollectionId(collectionRouteId);
     setFilter("all");
     setVaultKey(nextVaultKey);
   }
@@ -858,6 +967,12 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
     }
     if (isTauriRuntime()) window.location.replace(path === "/" ? "/" : "/history/");
     else router.replace(path);
+  }
+
+  function openCollectionRoute(id: string) {
+    const target = `/collections/?collection=${encodeURIComponent(id)}`;
+    if (isTauriRuntime()) window.location.assign(target);
+    else router.push(target);
   }
 
   useEffect(() => {
@@ -1148,8 +1263,9 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
 
   async function createNoteWithFormat(format: ManualNoteFormat) {
     const noteId = await createBlankNote(format);
+    if (collectionRouteId) await toggleNoteCollection(noteId, collectionRouteId);
     setFilter("all");
-    setCollectionId(undefined);
+    setCollectionId(collectionRouteId);
     setPage(1);
     setSelectedNoteId(noteId);
     setIsNewNoteOpen(false);
@@ -1162,6 +1278,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
     setCollectionId(undefined);
     setPage(1);
     setSelectedNoteId(undefined);
+    setIsMobileLibraryOpen(false);
   }
 
   const sidebarProps: LibrarySidebarProps = {
@@ -1179,13 +1296,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
       setPage(1);
     },
     onFilterChange: changeFilter,
-    onCollectionChange: (nextCollectionId) => {
-      setFilter("all");
-      setCollectionId(nextCollectionId);
-      setPage(1);
-      setSelectedNoteId(undefined);
-      setIsMobileLibraryOpen(false);
-    },
+    onCollectionChange: openCollectionRoute,
     onEditCollection: (collection) => setCollectionEditor(collection ?? null),
     onDeleteCollection: setDeletingCollection,
     onSortChange: (nextSort) => {
@@ -1245,6 +1356,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
                 <Button
                   variant="ghost"
                   size="icon-lg"
+                  className="hidden sm:inline-flex"
                   aria-label="Convert text to PDF"
                   onClick={() => setIsPdfConverterOpen(true)}
                 >
@@ -1395,21 +1507,31 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
       <div className="oil-grain" aria-hidden="true" />
 
       <div className="app-surface relative z-10 flex h-dvh min-h-0 flex-col overflow-hidden border-white/8 lg:h-[calc(100dvh-1.5rem)] lg:rounded-[1.75rem] lg:border">
-        <header className="flex h-16 shrink-0 items-center border-b border-white/8 bg-black/25 px-3 backdrop-blur-2xl sm:px-5">
-          <Sheet open={isMobileLibraryOpen} onOpenChange={setIsMobileLibraryOpen}>
-            <SheetTrigger asChild>
-              <Button variant="outline" size="icon-lg" className="me-2 lg:hidden" aria-label="Open library">
-                <Menu />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-[88vw] max-w-[340px] border-e-white/10 p-0">
-              <SheetHeader className="sr-only">
-                <SheetTitle>ChatSaver library</SheetTitle>
-                <SheetDescription>Browse, filter, and create saved notes.</SheetDescription>
-              </SheetHeader>
-              <LibrarySidebar {...sidebarProps} />
-            </SheetContent>
-          </Sheet>
+        <header className="flex h-16 shrink-0 items-center border-b border-white/8 bg-black/25 px-2 backdrop-blur-2xl sm:px-5">
+          {collectionRouteId && selectedNote ? (
+            <Button variant="outline" size="icon-lg" className="me-2" aria-label="Back to collection" onClick={() => setSelectedNoteId(undefined)}>
+              <ArrowLeft />
+            </Button>
+          ) : collectionRouteId ? (
+            <Button asChild variant="outline" size="icon-lg" className="me-2" aria-label="Back to history">
+              <Link href="/history"><ArrowLeft /></Link>
+            </Button>
+          ) : (
+            <Sheet open={isMobileLibraryOpen} onOpenChange={setIsMobileLibraryOpen}>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="icon-lg" className="me-2 lg:hidden" aria-label="Open all chats">
+                  <Menu />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-screen max-w-none border-e-white/10 p-0 sm:w-[390px]">
+                <SheetHeader className="sr-only">
+                  <SheetTitle>All chats and notes</SheetTitle>
+                  <SheetDescription>Browse every chat, collection, and saved note.</SheetDescription>
+                </SheetHeader>
+                <LibrarySidebar {...sidebarProps} />
+              </SheetContent>
+            </Sheet>
+          )}
 
           <Link className="flex items-center gap-2.5" href="/" aria-label="ChatSaver home">
             <Image
@@ -1420,7 +1542,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
               className="size-9 object-cover"
               priority
             />
-            <span>
+            <span className="hidden sm:block">
               <span className="block text-sm font-semibold leading-none tracking-[-0.025em]">
                 ChatSaver
               </span>
@@ -1433,14 +1555,14 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
           <Separator orientation="vertical" className="mx-5 hidden h-7 bg-white/8 lg:block" />
           <div className="hidden items-center gap-2 text-xs text-muted-foreground lg:flex">
             <BookOpenText className="size-3.5" />
-            {historyView ? "History" : FILTERS.find((item) => item.id === filter)?.label}
+            {collectionRouteId ? activeCollection?.name ?? "Collection" : historyView ? "History" : FILTERS.find((item) => item.id === filter)?.label}
             <ChevronRight className="size-3" />
             <span className="max-w-64 truncate text-foreground">
               {selectedNote?.title ?? "Overview"}
             </span>
           </div>
 
-          <div className="ms-auto flex items-center gap-2">
+          <div className="ms-auto flex items-center gap-1 sm:gap-2">
             <Tooltip>
               <TooltipTrigger asChild><PrivateVaultShortcut /></TooltipTrigger>
               <TooltipContent>Private Vault</TooltipContent>
@@ -1498,6 +1620,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
                 <Button
                   variant="ghost"
                   size="icon-lg"
+                  className="hidden sm:inline-flex"
                   aria-label="Convert text to PDF"
                   onClick={() => setIsPdfConverterOpen(true)}
                 >
@@ -1545,26 +1668,56 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
         </header>
 
         <div className="flex min-h-0 flex-1">
-          <aside className="hidden min-h-0 w-[322px] shrink-0 overflow-hidden border-e border-white/8 lg:block">
-            <LibrarySidebar {...sidebarProps} />
-          </aside>
+          {!collectionRouteId ? (
+            <aside className="hidden min-h-0 w-[322px] shrink-0 overflow-hidden border-e border-white/8 lg:block">
+              <LibrarySidebar {...sidebarProps} />
+            </aside>
+          ) : null}
 
-          <NoteEditor
-            note={selectedNote}
-            blocks={blocks}
-            collections={collections}
-            emptyView={historyView ? "history" : "library"}
-            onDeleted={() => {
-              setSelectedNoteId(undefined);
-              if (session) requestSync(session, false);
-            }}
-            onArchived={() => {
-              setSelectedNoteId(undefined);
-              setPage(1);
-            }}
-            onImport={() => setIsImportOpen(true)}
-            onCreate={() => void createNote()}
-          />
+          {collectionRouteId && !selectedNote ? (
+            <ResourceOverview
+              title={activeCollection?.name ?? "Collection"}
+              description={`${notesPage.totalItems} resource${notesPage.totalItems === 1 ? "" : "s"} organized in this collection.`}
+              page={notesPage}
+              collection={activeCollection}
+              onSelect={selectNote}
+              onCreate={() => void createNote()}
+              onPageChange={(nextPage) => { setPage(nextPage); setSelectedNoteId(undefined); }}
+            />
+          ) : !selectedNote && historyView && notesPage.items.length ? (
+            <>
+              <div className="flex min-h-0 flex-1 lg:hidden">
+                <ResourceOverview
+                  title={FILTERS.find((item) => item.id === filter)?.label ?? "All conversations"}
+                  description={query ? "Clear results from titles, questions, and saved answers." : "Every matching chat and note, clearly visible without opening the drawer."}
+                  page={notesPage}
+                  onSelect={selectNote}
+                  onCreate={() => void createNote()}
+                  onPageChange={(nextPage) => { setPage(nextPage); setSelectedNoteId(undefined); }}
+                />
+              </div>
+              <div className="hidden min-h-0 flex-1 lg:flex">
+                <NoteEditor note={selectedNote} blocks={blocks} collections={collections} emptyView="history" onDeleted={() => setSelectedNoteId(undefined)} onArchived={() => setSelectedNoteId(undefined)} onImport={() => setIsImportOpen(true)} onCreate={() => void createNote()} />
+              </div>
+            </>
+          ) : (
+            <NoteEditor
+              note={selectedNote}
+              blocks={blocks}
+              collections={collections}
+              emptyView={historyView ? "history" : "library"}
+              onDeleted={() => {
+                setSelectedNoteId(undefined);
+                if (session) requestSync(session, false);
+              }}
+              onArchived={() => {
+                setSelectedNoteId(undefined);
+                setPage(1);
+              }}
+              onImport={() => setIsImportOpen(true)}
+              onCreate={() => void createNote()}
+            />
+          )}
         </div>
 
         <SiteFooter compact />
@@ -1576,7 +1729,8 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
           onImported={(noteId) => {
             if (noteId) {
               setFilter("all");
-              setCollectionId(undefined);
+              if (collectionRouteId) void toggleNoteCollection(noteId, collectionRouteId);
+              setCollectionId(collectionRouteId);
               setPage(1);
               setSelectedNoteId(noteId);
             }
