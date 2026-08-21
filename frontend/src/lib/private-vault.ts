@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from "dexie";
 import { createClientUuid } from "@/lib/client-uuid";
+import { API_ROOT, platformFetch } from "@/lib/platform-fetch";
 
 const DATABASE_NAME = "chatsaver-private-vault";
 const METADATA_KEY = "vault";
@@ -24,6 +25,7 @@ interface PrivateVaultMetadata {
   verifierIv: string;
   verifierCiphertext: string;
   createdAt: string;
+  updatedAt: string;
 }
 
 interface EncryptedPrivateVaultItem {
@@ -32,6 +34,17 @@ interface EncryptedPrivateVaultItem {
   ciphertext: string;
   createdAt: string;
   updatedAt: string;
+}
+
+interface PrivateVaultDeletion {
+  id: string;
+  deletedAt: string;
+}
+
+interface PrivateVaultCloudSnapshot {
+  metadata: Omit<PrivateVaultMetadata, "key"> | null;
+  items: EncryptedPrivateVaultItem[];
+  deleted: PrivateVaultDeletion[];
 }
 
 interface PrivateVaultBackup {
@@ -45,12 +58,23 @@ interface PrivateVaultBackup {
 class PrivateVaultDatabase extends Dexie {
   metadata!: EntityTable<PrivateVaultMetadata, "key">;
   items!: EntityTable<EncryptedPrivateVaultItem, "id">;
+  deletions!: EntityTable<PrivateVaultDeletion, "id">;
 
   constructor() {
     super(DATABASE_NAME);
     this.version(1).stores({
       metadata: "&key",
       items: "&id, updatedAt, createdAt",
+    });
+    this.version(2).stores({
+      metadata: "&key",
+      items: "&id, updatedAt, createdAt",
+      deletions: "&id, deletedAt",
+    }).upgrade(async (transaction) => {
+      const metadata = transaction.table<PrivateVaultMetadata, string>("metadata");
+      await metadata.toCollection().modify((value) => {
+        value.updatedAt = value.updatedAt || value.createdAt;
+      });
     });
   }
 }
@@ -132,12 +156,14 @@ export async function createPrivateVault(pin: string): Promise<CryptoKey> {
   const salt = toBase64(bytes(24));
   const key = await keyFromPin(pin, salt);
   const verifier = await encrypt(key, VERIFIER);
+  const timestamp = new Date().toISOString();
   await privateVaultDb.metadata.put({
     key: METADATA_KEY,
     salt,
     verifierIv: verifier.iv,
     verifierCiphertext: verifier.ciphertext,
-    createdAt: new Date().toISOString(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
   });
   try { localStorage.removeItem(PRIVATE_VAULT_DISMISSED_KEY); } catch { /* ignored */ }
   return key;
@@ -215,7 +241,11 @@ export async function savePrivateVaultItem(
 }
 
 export async function deletePrivateVaultItem(id: string): Promise<void> {
-  await privateVaultDb.items.delete(id);
+  const deletedAt = new Date().toISOString();
+  await privateVaultDb.transaction("rw", [privateVaultDb.items, privateVaultDb.deletions], async () => {
+    await privateVaultDb.items.delete(id);
+    await privateVaultDb.deletions.put({ id, deletedAt });
+  });
 }
 
 export async function createPrivateVaultBackup(): Promise<string> {
@@ -261,7 +291,10 @@ export async function restorePrivateVaultBackup(value: unknown): Promise<number>
     throw new Error("This backup uses a different PIN vault. Reset this vault before restoring it.");
   }
   await privateVaultDb.transaction("rw", [privateVaultDb.metadata, privateVaultDb.items], async () => {
-    await privateVaultDb.metadata.put(value.metadata);
+    await privateVaultDb.metadata.put({
+      ...value.metadata,
+      updatedAt: value.metadata.updatedAt || value.metadata.createdAt,
+    });
     await privateVaultDb.items.bulkPut(value.items);
   });
   return value.items.length;
@@ -270,4 +303,119 @@ export async function restorePrivateVaultBackup(value: unknown): Promise<number>
 export async function resetPrivateVault(): Promise<void> {
   await privateVaultDb.delete();
   await privateVaultDb.open();
+}
+
+async function cloudRequest<T>(path: string, accessToken: string, init: RequestInit = {}): Promise<T> {
+  let response: Response;
+  try {
+    response = await platformFetch(path, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        ...init.headers,
+      },
+    });
+  } catch {
+    throw new Error(API_ROOT
+      ? "Private Vault could not reach ChatSaver. Your encrypted local copy is safe and will retry."
+      : "Private Vault cloud sync is not configured for this deployment.");
+  }
+  const text = await response.text();
+  if (!response.ok) {
+    let detail: string | undefined;
+    try {
+      const body = JSON.parse(text) as { detail?: string; message?: string };
+      detail = body.detail ?? body.message;
+    } catch { /* response was not JSON */ }
+    throw new Error(detail ?? `Private Vault sync failed (${response.status}).`);
+  }
+  return text ? JSON.parse(text) as T : undefined as T;
+}
+
+function sameVault(left: PrivateVaultMetadata, right: Omit<PrivateVaultMetadata, "key">): boolean {
+  return left.salt === right.salt
+    && left.verifierIv === right.verifierIv
+    && left.verifierCiphertext === right.verifierCiphertext;
+}
+
+async function mergeCloudSnapshot(snapshot: PrivateVaultCloudSnapshot): Promise<void> {
+  await privateVaultDb.transaction(
+    "rw",
+    [privateVaultDb.metadata, privateVaultDb.items, privateVaultDb.deletions],
+    async () => {
+      const localMetadata = await privateVaultDb.metadata.get(METADATA_KEY);
+      if (snapshot.metadata) {
+        if (localMetadata && !sameVault(localMetadata, snapshot.metadata)) {
+          throw new Error("This account has a different encrypted Private Vault. Reset this device's vault before syncing it.");
+        }
+        if (!localMetadata) {
+          await privateVaultDb.metadata.put({ key: METADATA_KEY, ...snapshot.metadata });
+        }
+      }
+
+      for (const deletion of snapshot.deleted) {
+        const localItem = await privateVaultDb.items.get(deletion.id);
+        const localDeletion = await privateVaultDb.deletions.get(deletion.id);
+        if (!localDeletion || localDeletion.deletedAt < deletion.deletedAt) {
+          await privateVaultDb.deletions.put(deletion);
+        }
+        if (localItem && localItem.updatedAt <= deletion.deletedAt) {
+          await privateVaultDb.items.delete(deletion.id);
+        }
+      }
+
+      for (const item of snapshot.items) {
+        const localItem = await privateVaultDb.items.get(item.id);
+        const localDeletion = await privateVaultDb.deletions.get(item.id);
+        if (localDeletion && localDeletion.deletedAt >= item.updatedAt) continue;
+        if (!localItem || localItem.updatedAt < item.updatedAt) {
+          await privateVaultDb.items.put(item);
+        }
+      }
+    },
+  );
+}
+
+export async function synchronizePrivateVault(accessToken: string): Promise<number> {
+  const initial = await cloudRequest<PrivateVaultCloudSnapshot>("/api/v1/private-vault", accessToken);
+  await mergeCloudSnapshot(initial);
+
+  const metadata = await privateVaultDb.metadata.get(METADATA_KEY);
+  if (!metadata) return 0;
+  if (!initial.metadata) {
+    const { key: _key, ...payload } = metadata;
+    void _key;
+    await cloudRequest<void>("/api/v1/private-vault/metadata", accessToken, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  const [items, deletions] = await Promise.all([
+    privateVaultDb.items.toArray(),
+    privateVaultDb.deletions.toArray(),
+  ]);
+  for (const item of items) {
+    const { id, ...payload } = item;
+    await cloudRequest<void>(`/api/v1/private-vault/items/${encodeURIComponent(id)}`, accessToken, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  }
+  for (const deletion of deletions) {
+    await cloudRequest<void>(`/api/v1/private-vault/items/${encodeURIComponent(deletion.id)}/delete`, accessToken, {
+      method: "POST",
+      body: JSON.stringify({ deletedAt: deletion.deletedAt }),
+    });
+  }
+
+  const finalSnapshot = await cloudRequest<PrivateVaultCloudSnapshot>("/api/v1/private-vault", accessToken);
+  await mergeCloudSnapshot(finalSnapshot);
+  return finalSnapshot.items.length;
+}
+
+export async function eraseSyncedPrivateVault(accessToken: string): Promise<void> {
+  await cloudRequest<void>("/api/v1/private-vault", accessToken, { method: "DELETE" });
+  await resetPrivateVault();
 }

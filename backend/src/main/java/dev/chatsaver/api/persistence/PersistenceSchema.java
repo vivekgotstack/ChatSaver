@@ -327,6 +327,68 @@ class NoteBlockEntity {
 }
 
 @Entity
+@Table(name = "private_vault", uniqueConstraints = @UniqueConstraint(
+        name = "uq_private_vault_user", columnNames = "user_id"))
+class PrivateVaultEntity {
+    @Id
+    UUID id;
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    AppUserEntity user;
+    @Column(nullable = false, length = 128)
+    String salt;
+    @Column(name = "verifier_iv", nullable = false, length = 128)
+    String verifierIv;
+    @Column(name = "verifier_ciphertext", nullable = false, columnDefinition = "text")
+    String verifierCiphertext;
+    @Column(name = "created_at", nullable = false, columnDefinition = "timestamptz default now()")
+    Instant createdAt;
+    @Column(name = "updated_at", nullable = false, columnDefinition = "timestamptz default now()")
+    Instant updatedAt;
+}
+
+@Entity
+@Table(name = "private_vault_item", uniqueConstraints = @UniqueConstraint(
+        name = "uq_private_vault_item_user_client", columnNames = {"user_id", "client_id"}),
+        indexes = @Index(name = "idx_private_vault_item_user_updated", columnList = "user_id,updated_at,id"))
+class PrivateVaultItemEntity {
+    @Id
+    UUID id;
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    AppUserEntity user;
+    @Column(name = "client_id", nullable = false)
+    UUID clientId;
+    @Column(nullable = false, length = 128)
+    String iv;
+    @Column(nullable = false, columnDefinition = "text")
+    String ciphertext;
+    @Column(name = "created_at", nullable = false)
+    Instant createdAt;
+    @Column(name = "updated_at", nullable = false)
+    Instant updatedAt;
+}
+
+@Entity
+@Table(name = "private_vault_item_deletion", uniqueConstraints = @UniqueConstraint(
+        name = "uq_private_vault_item_deletion_user_client", columnNames = {"user_id", "client_id"}),
+        indexes = @Index(name = "idx_private_vault_item_deletion_user", columnList = "user_id,deleted_at"))
+class PrivateVaultItemDeletionEntity {
+    @Id
+    UUID id;
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    AppUserEntity user;
+    @Column(name = "client_id", nullable = false)
+    UUID clientId;
+    @Column(name = "deleted_at", nullable = false)
+    Instant deletedAt;
+}
+
+@Entity
 @Table(name = "mutation_receipt", indexes = @Index(name = "idx_mutation_receipt_processed", columnList = "processed_at"))
 class MutationReceiptEntity {
     @Id

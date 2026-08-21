@@ -32,14 +32,17 @@ import {
   createPrivateVault,
   createPrivateVaultBackup,
   deletePrivateVaultItem,
+  eraseSyncedPrivateVault,
   hasPrivateVault,
   listPrivateVaultItems,
-  resetPrivateVault,
   restorePrivateVaultBackup,
   savePrivateVaultItem,
+  synchronizePrivateVault,
   unlockPrivateVault,
   type PrivateVaultItem,
 } from "@/lib/private-vault";
+import { AccountDialog } from "@/components/account-dialog";
+import { refreshAccount, type AuthSession } from "@/lib/sync";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -66,7 +69,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
-type VaultPhase = "loading" | "intro" | "setup" | "locked" | "unlocked";
+type VaultPhase = "loading" | "auth" | "intro" | "setup" | "locked" | "unlocked";
 
 function PinInput({
   value,
@@ -205,6 +208,9 @@ export function PrivateVaultApp() {
   const router = useRouter();
   const restoreInputRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<VaultPhase>("loading");
+  const [session, setSession] = useState<AuthSession>();
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [vaultKey, setVaultKey] = useState<CryptoKey>();
   const [items, setItems] = useState<PrivateVaultItem[]>([]);
   const [query, setQuery] = useState("");
@@ -217,13 +223,33 @@ export function PrivateVaultApp() {
 
   useEffect(() => {
     let active = true;
-    void hasPrivateVault().then((configured) => {
+    void refreshAccount().then(async (restored) => {
+      if (!active) return;
+      setSession(restored);
+      try {
+        await synchronizePrivateVault(restored.accessToken);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Private Vault could not sync.");
+      }
+      const configured = await hasPrivateVault();
       if (active) setPhase(configured ? "locked" : "intro");
     }).catch(() => {
-      if (active) setPhase("intro");
+      if (active) setPhase("auth");
     });
     return () => { active = false; };
   }, []);
+
+  async function syncVault(activeSession = session, quiet = false) {
+    if (!activeSession) throw new Error("Sign in to sync Private Vault.");
+    setSyncing(true);
+    try {
+      await synchronizePrivateVault(activeSession.accessToken);
+      if (vaultKey) await loadItems(vaultKey);
+      if (!quiet) toast.success("Private Vault synced", { description: "Encrypted data is backed up to your account." });
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   useEffect(() => {
     if (!vaultKey) return;
@@ -255,6 +281,17 @@ export function PrivateVaultApp() {
     return () => window.clearTimeout(timer);
   }, [lockUntil]);
 
+  useEffect(() => {
+    if (!session) return;
+    const retry = () => {
+      void synchronizePrivateVault(session.accessToken)
+        .then(() => vaultKey ? loadItems(vaultKey) : undefined)
+        .catch(() => { /* encrypted local changes retry on the next connection */ });
+    };
+    window.addEventListener("online", retry);
+    return () => window.removeEventListener("online", retry);
+  }, [session, vaultKey]);
+
   function lock() {
     setVaultKey(undefined);
     setItems([]);
@@ -277,12 +314,17 @@ export function PrivateVaultApp() {
       return;
     }
     const key = await createPrivateVault(pin);
+    try {
+      await syncVault(session, true);
+    } catch {
+      toast.warning("Vault created offline", { description: "Its encrypted data will sync when ChatSaver reconnects." });
+    }
     setVaultKey(key);
     setPin("");
     setConfirmPin("");
     setItems([]);
     setPhase("unlocked");
-    toast.success("Private Vault enabled", { description: "Your PIN stays only in your memory." });
+    toast.success("Private Vault enabled", { description: "Encrypted to your account. Your PIN is never uploaded." });
   }
 
   async function unlock() {
@@ -312,6 +354,11 @@ export function PrivateVaultApp() {
   async function saveItem(input: Pick<PrivateVaultItem, "title" | "link" | "description" | "pinned">) {
     if (!vaultKey) throw new Error("Private Vault is locked.");
     await savePrivateVaultItem(vaultKey, input, itemEditor ?? undefined);
+    try {
+      await syncVault(session, true);
+    } catch {
+      toast.warning("Saved encrypted locally", { description: "Cloud backup will retry when ChatSaver reconnects." });
+    }
     await loadItems(vaultKey);
     toast.success(itemEditor ? "Private item updated" : "Saved in Private Vault");
   }
@@ -319,6 +366,11 @@ export function PrivateVaultApp() {
   async function togglePinned(item: PrivateVaultItem) {
     if (!vaultKey) return;
     await savePrivateVaultItem(vaultKey, { ...item, pinned: !item.pinned }, item);
+    try {
+      await syncVault(session, true);
+    } catch {
+      toast.warning("Change queued", { description: "Encrypted cloud sync will retry automatically." });
+    }
     await loadItems(vaultKey);
   }
 
@@ -340,6 +392,11 @@ export function PrivateVaultApp() {
     }
     try {
       const count = await restorePrivateVaultBackup(JSON.parse(await file.text()) as unknown);
+      try {
+        await syncVault(session, true);
+      } catch {
+        toast.warning("Backup restored locally", { description: "Encrypted cloud sync will retry automatically." });
+      }
       setPhase("locked");
       toast.success(`Encrypted vault restored`, { description: `${count} item${count === 1 ? "" : "s"} ready to unlock with its original PIN.` });
     } catch (error) {
@@ -347,6 +404,16 @@ export function PrivateVaultApp() {
     } finally {
       if (restoreInputRef.current) restoreInputRef.current.value = "";
     }
+  }
+
+  async function removeItem(id: string) {
+    await deletePrivateVaultItem(id);
+    try {
+      await syncVault(session, true);
+    } catch {
+      toast.warning("Deletion queued", { description: "It will be removed from PostgreSQL when ChatSaver reconnects." });
+    }
+    if (vaultKey) await loadItems(vaultKey);
   }
 
   const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -371,7 +438,7 @@ export function PrivateVaultApp() {
           <div className="flex min-w-0 items-center gap-2">
             <LockKeyhole className="size-4 text-primary" />
             <span className="truncate text-sm font-medium">Private Vault</span>
-            <Badge variant="outline" className="hidden border-primary/25 bg-primary/8 sm:inline-flex">Local encrypted</Badge>
+            <Badge variant="outline" className="hidden border-primary/25 bg-primary/8 sm:inline-flex">Encrypted cloud sync</Badge>
           </div>
           {phase === "unlocked" ? (
             <div className="ms-auto flex items-center gap-2">
@@ -388,13 +455,26 @@ export function PrivateVaultApp() {
           <div className="grid min-h-[calc(100dvh-4rem)] place-items-center"><ShieldCheck className="size-8 animate-pulse text-primary" /></div>
         ) : null}
 
+        {phase === "auth" ? (
+          <section className="mx-auto grid min-h-[calc(100dvh-4rem)] max-w-lg place-items-center px-5 py-12">
+            <Card className="w-full border-primary/25 bg-card/90">
+              <CardContent className="p-6 text-center sm:p-8">
+                <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-primary/10 text-primary"><ShieldCheck /></span>
+                <h1 className="mt-6 text-3xl font-semibold tracking-[-0.045em]">Sign in to Private Vault</h1>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">Your encrypted vault is backed up to PostgreSQL and restored across your devices. ChatSaver never receives your PIN or readable private data.</p>
+                <Button size="lg" className="mt-7 w-full" onClick={() => setAccountOpen(true)}>Sign in or create account</Button>
+              </CardContent>
+            </Card>
+          </section>
+        ) : null}
+
         {phase === "intro" ? (
           <section className="mx-auto grid min-h-[calc(100dvh-4rem)] w-full max-w-6xl items-center gap-10 px-5 py-12 lg:grid-cols-[1.05fr_.95fr] lg:px-10">
             <div>
               <Badge variant="outline" className="border-primary/30 bg-primary/10"><FileKey2 /> Optional private space</Badge>
-              <h1 className="mt-6 max-w-2xl text-balance text-4xl font-semibold leading-[0.95] tracking-[-0.055em] sm:text-6xl">Quick links.<br /><span className="text-ivory/68">Locked away locally.</span></h1>
+              <h1 className="mt-6 max-w-2xl text-balance text-4xl font-semibold leading-[0.95] tracking-[-0.055em] sm:text-6xl">Quick links.<br /><span className="text-ivory/68">Encrypted everywhere.</span></h1>
               <p className="mt-6 max-w-xl text-pretty text-sm leading-7 text-muted-foreground sm:text-base">
-                Private Vault is a focused place for important links and short descriptions. Every title, URL, and note is encrypted on this device before it is saved.
+                Private Vault is a focused place for important links and short descriptions. Every title, URL, and note is encrypted on this device before its ciphertext is synced to your account.
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Button size="lg" className="royal-glow gap-2" onClick={() => setPhase("setup")}><KeyRound />Enable Private Vault</Button>
@@ -416,7 +496,7 @@ export function PrivateVaultApp() {
                 <div className="flex items-center justify-between"><span className="grid size-11 place-items-center rounded-xl bg-primary/14 text-primary"><LockKeyhole /></span><Badge variant="secondary">First-time setup</Badge></div>
                 <h2 className="mt-7 text-2xl font-semibold tracking-[-0.04em]">What enabling does</h2>
                 <div className="mt-5 space-y-4">
-                  {["Creates a separate encrypted local database", "Protects it with your six-digit PIN", "Auto-locks when hidden or after five minutes", "Keeps private data out of account sync"].map((item) => (
+                  {["Encrypts every field before cloud sync", "Protects it with your six-digit PIN", "Auto-locks when hidden or after five minutes", "Restores encrypted data on your signed-in devices"].map((item) => (
                     <div className="flex gap-3 text-sm text-muted-foreground" key={item}><span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-emerald-300/10 text-emerald-300"><Check className="size-3" /></span>{item}</div>
                   ))}
                 </div>
@@ -459,8 +539,8 @@ export function PrivateVaultApp() {
                 <AlertDialog>
                   <AlertDialogTrigger asChild><Button variant="ghost" className="mt-4 text-xs text-muted-foreground"><RotateCcw />Forgot PIN?</Button></AlertDialogTrigger>
                   <AlertDialogContent>
-                    <AlertDialogHeader><AlertDialogTitle>Reset the encrypted Private Vault?</AlertDialogTitle><AlertDialogDescription>Your PIN cannot be recovered. Resetting permanently deletes every private item on this device. Your normal ChatSaver notes are not affected.</AlertDialogDescription></AlertDialogHeader>
-                    <AlertDialogFooter><AlertDialogCancel>Keep vault</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void resetPrivateVault().then(() => { setPhase("intro"); toast.success("Private Vault reset"); })}>Delete private items</AlertDialogAction></AlertDialogFooter>
+                    <AlertDialogHeader><AlertDialogTitle>Reset the encrypted Private Vault?</AlertDialogTitle><AlertDialogDescription>Your PIN cannot be recovered. Resetting permanently deletes every encrypted private item from this device and your account. Your normal ChatSaver notes are not affected.</AlertDialogDescription></AlertDialogHeader>
+                    <AlertDialogFooter><AlertDialogCancel>Keep vault</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void (async () => { if (!session) return; await eraseSyncedPrivateVault(session.accessToken); setPhase("intro"); toast.success("Private Vault reset everywhere"); })().catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Private Vault was not reset."))}>Delete everywhere</AlertDialogAction></AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
               </CardContent>
@@ -483,7 +563,7 @@ export function PrivateVaultApp() {
                       <div className="flex items-start gap-3"><button type="button" className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg ${item.pinned ? "bg-primary/14 text-primary" : "bg-white/5 text-muted-foreground"}`} aria-label={item.pinned ? "Unpin item" : "Pin item"} onClick={() => void togglePinned(item)}>{item.pinned ? <Pin className="size-3.5 fill-current" /> : <Link2 className="size-3.5" />}</button><div className="min-w-0 flex-1"><h2 className="break-words text-base font-semibold tracking-[-0.02em]">{item.title}</h2>{item.link ? <p className="mt-1 truncate font-mono text-[9px] uppercase tracking-wide text-primary/75">{new URL(item.link).hostname}</p> : null}</div></div>
                       {item.description ? <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">{item.description}</p> : <p className="mt-4 text-sm italic text-muted-foreground/55">No description</p>}
                       {item.link ? <Button asChild variant="outline" className="mt-5 w-full justify-between"><a href={item.link} target="_blank" rel="noreferrer"><span className="truncate">Open link</span><ArrowUpRight /></a></Button> : null}
-                      <div className="mt-4 flex items-center justify-between border-t border-white/7 pt-3"><time className="font-mono text-[8px] uppercase tracking-wide text-muted-foreground">{new Date(item.updatedAt).toLocaleDateString()}</time><div className="flex gap-1"><Button variant="ghost" size="icon-sm" aria-label={`Copy ${item.title} link`} disabled={!item.link} onClick={() => void navigator.clipboard.writeText(item.link).then(() => toast.success("Link copied"))}><Copy /></Button><Button variant="ghost" size="icon-sm" aria-label={`Edit ${item.title}`} onClick={() => setItemEditor(item)}><Pencil /></Button><AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon-sm" className="text-destructive" aria-label={`Delete ${item.title}`}><Trash2 /></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete “{item.title}”?</AlertDialogTitle><AlertDialogDescription>This permanently removes the encrypted item from this device.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void deletePrivateVaultItem(item.id).then(() => vaultKey && loadItems(vaultKey))}>Delete item</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></div></div>
+                      <div className="mt-4 flex items-center justify-between border-t border-white/7 pt-3"><time className="font-mono text-[8px] uppercase tracking-wide text-muted-foreground">{new Date(item.updatedAt).toLocaleDateString()}</time><div className="flex gap-1"><Button variant="ghost" size="icon-sm" aria-label={`Copy ${item.title} link`} disabled={!item.link} onClick={() => void navigator.clipboard.writeText(item.link).then(() => toast.success("Link copied"))}><Copy /></Button><Button variant="ghost" size="icon-sm" aria-label={`Edit ${item.title}`} onClick={() => setItemEditor(item)}><Pencil /></Button><AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon-sm" className="text-destructive" aria-label={`Delete ${item.title}`}><Trash2 /></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete “{item.title}”?</AlertDialogTitle><AlertDialogDescription>This permanently removes the encrypted item from every synced device.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => void removeItem(item.id)}>Delete item</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></div></div>
                     </CardContent>
                   </Card>
                 ))}
@@ -497,6 +577,26 @@ export function PrivateVaultApp() {
 
       <ItemDialog open={itemEditor !== undefined} item={itemEditor ?? undefined} onOpenChange={(open) => { if (!open) setItemEditor(undefined); }} onSave={saveItem} />
       <input ref={restoreInputRef} className="sr-only" type="file" accept=".json,application/json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void restoreBackup(file); }} />
+      <AccountDialog
+        open={accountOpen}
+        session={session}
+        syncing={syncing}
+        onOpenChange={setAccountOpen}
+        onAuthenticated={(authenticated) => {
+          setSession(authenticated);
+          setAccountOpen(false);
+          setPhase("loading");
+          void syncVault(authenticated, true)
+            .then(() => hasPrivateVault())
+            .then((configured) => setPhase(configured ? "locked" : "intro"))
+            .catch((error: unknown) => {
+              setPhase("auth");
+              toast.error(error instanceof Error ? error.message : "Private Vault could not sync.");
+            });
+        }}
+        onLoggedOut={() => { setSession(undefined); setVaultKey(undefined); setItems([]); setPhase("auth"); }}
+        onSync={() => { void syncVault(); }}
+      />
     </main>
   );
 }
