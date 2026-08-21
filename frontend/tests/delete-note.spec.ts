@@ -14,6 +14,7 @@ test('Verify note deletion functionality works correctly', async ({ page }) => {
   // Click on the "New note Local" button and fill in the question and answer fields
 
   await page.getByRole('button', { name: 'New note Local' }).click();
+  await page.getByRole('button', { name: 'Q&A note' }).click();
   await page.getByRole('textbox', { name: 'Note title' }).click();
   await page.getByRole('textbox', { name: 'Note title' }).fill('Who are you?');
 

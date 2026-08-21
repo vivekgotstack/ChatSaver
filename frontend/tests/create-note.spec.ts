@@ -11,6 +11,7 @@ test('Verify note creation functionality works correctly', async ({ page }) => {
     await page.getByRole('button', { name: 'Save as editable note' }).click();
 
     await page.getByRole('button', { name: 'New note Local' }).click();
+    await page.getByRole('button', { name: 'Q&A note' }).click();
 
     await page.getByRole('textbox', { name: 'Question' }).click();
     await page.getByRole('textbox', { name: 'Question' }).fill('What is your goal');
