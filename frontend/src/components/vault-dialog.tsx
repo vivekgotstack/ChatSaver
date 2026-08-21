@@ -10,6 +10,7 @@ import {
   FileArchive,
   FileDown,
   HardDrive,
+  LockKeyhole,
   Plug,
   ShieldCheck,
   Trash2,
@@ -231,6 +232,21 @@ export function VaultDialog({ open, onOpenChange, accessToken, vaultKey, onConve
                     </span>
                   </Button>
                 ) : null}
+                <Button
+                  asChild
+                  variant="outline"
+                  className="h-auto min-w-0 overflow-hidden whitespace-normal justify-start gap-3 px-4 py-3 text-left md:col-span-2"
+                >
+                  <Link href="/private-vault" onClick={() => onOpenChange(false)}>
+                    <LockKeyhole className="shrink-0 text-primary" />
+                    <span className="min-w-0 overflow-hidden">
+                      <span className="block break-words text-sm font-medium leading-tight">Private Vault</span>
+                      <span className="mt-0.5 block break-words text-xs font-normal leading-snug text-muted-foreground">
+                        PIN-protected encrypted links and quick saves
+                      </span>
+                    </span>
+                  </Link>
+                </Button>
                 <Button
                   asChild
                   variant="outline"

@@ -49,6 +49,7 @@ import type {
 import { NoteEditor } from "@/components/note-editor";
 import { AccountDialog } from "@/components/account-dialog";
 import { ConnectedIntegrationsShortcut } from "@/components/connected-integrations-shortcut";
+import { PrivateVaultShortcut } from "@/components/private-vault-shortcut";
 import {
   activateAccountVault,
   confirmGuestMigration,
@@ -827,6 +828,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
       if (action === "vault") setIsVaultOpen(true);
       if (action === "pdf") setIsPdfConverterOpen(true);
       if (action === "integrations") window.location.assign("/integrations/");
+      if (action === "private-vault") window.location.assign("/private-vault/");
       if (action === "sync") {
         if (session) requestSync(session, true);
         else setIsAccountOpen(true);
@@ -1229,6 +1231,10 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
             </span>
             <DesktopInstallButton />
             <Tooltip>
+              <TooltipTrigger asChild><PrivateVaultShortcut /></TooltipTrigger>
+              <TooltipContent>Private Vault</TooltipContent>
+            </Tooltip>
+            <Tooltip>
               <TooltipTrigger asChild>
                 <ConnectedIntegrationsShortcut accessToken={session?.accessToken} />
               </TooltipTrigger>
@@ -1435,6 +1441,10 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
           </div>
 
           <div className="ms-auto flex items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild><PrivateVaultShortcut /></TooltipTrigger>
+              <TooltipContent>Private Vault</TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <ConnectedIntegrationsShortcut accessToken={session?.accessToken} />

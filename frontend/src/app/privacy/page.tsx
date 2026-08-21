@@ -39,6 +39,15 @@ export default function PrivacyPage() {
         </p>
       </section>
       <section>
+        <h2>Private Vault</h2>
+        <p>
+          Private Vault is optional and separate from account sync. Its titles, links, and
+          descriptions are encrypted on your device with a key derived from your six-digit PIN.
+          The PIN and decrypted Private Vault content are not sent to ChatSaver&apos;s server. An
+          exported Private Vault backup remains encrypted and requires its original PIN.
+        </p>
+      </section>
+      <section>
         <h2>Retention and deletion</h2>
         <p>
           Local data remains on your device until you clear the vault or browser data. Synced data

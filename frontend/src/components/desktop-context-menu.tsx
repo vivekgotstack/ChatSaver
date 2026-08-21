@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Cloud, Database, FileDown, MonitorSmartphone, Plug, RefreshCw } from "lucide-react";
+import { Cloud, Database, FileDown, LockKeyhole, MonitorSmartphone, Plug, RefreshCw } from "lucide-react";
 import { isTauriRuntime } from "@/lib/platform-fetch";
 
-export type DesktopAction = "devices" | "sync" | "vault" | "pdf" | "integrations";
+export type DesktopAction = "devices" | "sync" | "vault" | "private-vault" | "pdf" | "integrations";
 export const DESKTOP_ACTION_EVENT = "chatsaver:desktop-action";
 
 const ACTIONS: Array<{
@@ -30,6 +30,12 @@ const ACTIONS: Array<{
     label: "Vault controls",
     description: "Backup, restore, and storage",
     icon: Database,
+  },
+  {
+    action: "private-vault",
+    label: "Private Vault",
+    description: "Open PIN-protected quick saves",
+    icon: LockKeyhole,
   },
   {
     action: "integrations",
@@ -64,7 +70,7 @@ export function DesktopContextMenu() {
       event.preventDefault();
       setPosition({
         x: Math.max(8, Math.min(event.clientX, window.innerWidth - 268)),
-        y: Math.max(8, Math.min(event.clientY, window.innerHeight - 366)),
+        y: Math.max(8, Math.min(event.clientY, window.innerHeight - 428)),
       });
     }
 
@@ -99,6 +105,10 @@ export function DesktopContextMenu() {
     setPosition(undefined);
     if (!action) {
       window.location.reload();
+      return;
+    }
+    if (action === "private-vault") {
+      window.location.assign("/private-vault/");
       return;
     }
     window.dispatchEvent(new CustomEvent<DesktopAction>(DESKTOP_ACTION_EVENT, { detail: action }));
