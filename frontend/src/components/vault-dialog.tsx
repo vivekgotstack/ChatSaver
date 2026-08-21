@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
   ArchiveRestore,
@@ -9,6 +10,7 @@ import {
   FileArchive,
   FileDown,
   HardDrive,
+  Plug,
   ShieldCheck,
   Trash2,
   Upload,
@@ -229,6 +231,21 @@ export function VaultDialog({ open, onOpenChange, accessToken, vaultKey, onConve
                     </span>
                   </Button>
                 ) : null}
+                <Button
+                  asChild
+                  variant="outline"
+                  className="h-auto min-w-0 overflow-hidden whitespace-normal justify-start gap-3 px-4 py-3 text-left md:col-span-2"
+                >
+                  <Link href="/integrations" onClick={() => onOpenChange(false)}>
+                    <Plug className="shrink-0 text-primary" />
+                    <span className="min-w-0 overflow-hidden">
+                      <span className="block break-words text-sm font-medium leading-tight">Plugins &amp; integrations</span>
+                      <span className="mt-0.5 block break-words text-xs font-normal leading-snug text-muted-foreground">
+                        Connect and manage GitHub, LinkedIn, Slack, Gmail, Drive, and Notion
+                      </span>
+                    </span>
+                  </Link>
+                </Button>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button
