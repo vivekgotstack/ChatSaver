@@ -85,7 +85,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -100,7 +99,6 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
 import {
   Tooltip,
@@ -412,6 +410,7 @@ interface LibrarySidebarProps {
   onPageChange: (page: number) => void;
   onSelect: (noteId: string) => void;
   onCreate: () => void;
+  onBrowseAll: () => void;
 }
 
 function LibraryLoading() {
@@ -489,6 +488,7 @@ function LibrarySidebar({
   onPageChange,
   onSelect,
   onCreate,
+  onBrowseAll,
 }: LibrarySidebarProps) {
   return (
     <div className="sidebar-surface flex h-full min-h-0 flex-col overflow-x-hidden">
@@ -625,83 +625,30 @@ function LibrarySidebar({
         </Select>
       </div>
 
-      <ScrollArea className="library-notes-scroll min-h-0 flex-1 overflow-hidden px-2">
-        <div className="space-y-1 px-1 pb-4">
-          {page.items.map((note) => (
-            <Button
-              variant="ghost"
-              className={`group h-auto w-full items-start justify-start gap-3 px-3 py-3 text-start ${
-                note.id === selectedNoteId
-                  ? "bg-primary/12 text-foreground hover:bg-primary/16"
-                  : "text-muted-foreground"
-              }`}
-              type="button"
-              key={note.id}
-              onClick={() => onSelect(note.id)}
-            >
-              <span
-                className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg border ${
-                  note.id === selectedNoteId
-                    ? "border-primary/25 bg-primary/15 text-primary"
-                    : "border-white/8 bg-black/15"
-                }`}
-              >
-                {note.isFavorite ? (
-                  <Star className="size-3.5 fill-current" />
-                ) : (
-                  <BookOpenText className="size-3.5" />
-                )}
+      <div className="flex min-h-0 flex-1 items-start px-3 pb-4">
+        <button
+          type="button"
+          className="group w-full rounded-2xl border border-primary/20 bg-primary/[0.045] p-4 text-start transition-colors hover:border-primary/45 hover:bg-primary/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+          onClick={onBrowseAll}
+        >
+          <span className="flex items-center gap-3">
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/14 text-primary">
+              <MessageSquareText />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-foreground">Browse all chats</span>
+              <span className="mt-1 block text-[11px] leading-5 text-muted-foreground">
+                Open the full-height conversation drawer
               </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-medium text-foreground">
-                  {note.title}
-                </span>
-                <span className="mt-1 flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-wide">
-                  {note.blockCount} blocks
-                  <span className="size-0.5 rounded-full bg-current opacity-50" />
-                  {note.source === "chatgpt" ? "Imported" : note.source === "markdown" ? "Markdown" : "Q&A"}
-                </span>
-              </span>
-              <ChevronRight className="mt-2 size-3.5 opacity-0 transition-opacity group-hover:opacity-60" />
-            </Button>
-          ))}
-
-          {!page.items.length ? (
-            <div className="mx-2 mt-3 rounded-xl border border-dashed border-white/10 bg-black/10 px-4 py-7 text-center">
-              <FilePlus2 className="mx-auto mb-3 size-5 text-primary" />
-              <p className="text-xs text-muted-foreground">
-                {query ? "Nothing matches that search." : "This view is empty."}
-              </p>
-            </div>
-          ) : null}
-        </div>
-      </ScrollArea>
-
-      {page.totalPages > 1 ? (
-        <div className="flex shrink-0 items-center justify-between border-t border-white/7 px-3 py-2">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            disabled={page.page <= 1}
-            aria-label="Previous notes page"
-            onClick={() => onPageChange(page.page - 1)}
-          >
-            <ChevronLeft />
-          </Button>
-          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
-            Page {page.page} of {page.totalPages}
+            </span>
+            <ChevronRight className="size-4 text-primary transition-transform group-hover:translate-x-0.5" />
           </span>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            disabled={page.page >= page.totalPages}
-            aria-label="Next notes page"
-            onClick={() => onPageChange(page.page + 1)}
-          >
-            <ChevronRight />
-          </Button>
-        </div>
-      ) : null}
+          <span className="mt-4 flex items-center justify-between border-t border-white/7 pt-3 font-mono text-[9px] uppercase tracking-wide text-muted-foreground">
+            <span>{page.totalItems} visible</span>
+            <span>No cramped list</span>
+          </span>
+        </button>
+      </div>
 
       <div className="shrink-0 border-t border-white/7 p-3">
         <div className="rounded-xl border border-white/7 bg-black/15 p-3">
@@ -720,6 +667,124 @@ function LibrarySidebar({
         </div>
       </div>
     </div>
+  );
+}
+
+function ChatBrowserDrawer({
+  open,
+  onOpenChange,
+  page,
+  selectedNoteId,
+  query,
+  filter,
+  sort,
+  counts,
+  onQueryChange,
+  onFilterChange,
+  onSortChange,
+  onPageChange,
+  onSelect,
+  onCreate,
+}: LibrarySidebarProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="left"
+        className="w-[calc(100vw-0.5rem)] max-w-none gap-0 border-e-white/10 bg-[#090708]/98 p-0 sm:max-w-none"
+        style={{ width: "min(94vw, 760px)", maxWidth: "760px" }}
+      >
+        <SheetHeader className="shrink-0 border-b border-white/8 px-4 py-4 pe-14 sm:px-6 sm:py-5">
+          <SheetTitle className="flex items-center gap-2 text-xl tracking-[-0.035em]">
+            <MessageSquareText className="text-primary" /> All chats and notes
+          </SheetTitle>
+          <SheetDescription>
+            {page.totalItems} visible in this view. Choose a chat; this drawer stays open until you close it or click outside.
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="shrink-0 space-y-3 border-b border-white/7 px-4 py-4 sm:px-6">
+          <label className="relative block">
+            <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              autoFocus
+              className="h-11 border-white/10 bg-black/25 ps-10"
+              type="search"
+              placeholder="Search every title, question, and answer"
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+            />
+          </label>
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {FILTERS.map((item) => (
+              <Button
+                key={item.id}
+                variant={filter === item.id ? "secondary" : "outline"}
+                size="sm"
+                className="shrink-0"
+                onClick={() => onFilterChange(item.id)}
+              >
+                <item.icon /> {item.label}
+                <span className="font-mono text-[9px] text-muted-foreground">{counts[item.id]}</span>
+              </Button>
+            ))}
+            <Select value={sort} onValueChange={(value) => onSortChange(value as NoteSort)}>
+              <SelectTrigger size="sm" className="ms-auto w-[112px] shrink-0" aria-label="Sort chats">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="updated-desc">Newest</SelectItem>
+                <SelectItem value="updated-asc">Oldest</SelectItem>
+                <SelectItem value="title-asc">A–Z</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 [scrollbar-width:none] sm:px-5 [&::-webkit-scrollbar]:hidden">
+          {page.items.length ? (
+            <div className="grid items-start gap-2 sm:grid-cols-2">
+              {page.items.map((note) => (
+                <button
+                  type="button"
+                  key={note.id}
+                  className={`group min-w-0 rounded-2xl border p-4 text-start transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
+                    note.id === selectedNoteId
+                      ? "border-primary/35 bg-primary/10"
+                      : "border-white/8 bg-white/[0.025] hover:border-primary/25 hover:bg-primary/[0.045]"
+                  }`}
+                  onClick={() => onSelect(note.id)}
+                >
+                  <span className="flex items-start gap-3">
+                    <span className={`grid size-9 shrink-0 place-items-center rounded-xl ${note.id === selectedNoteId ? "bg-primary/16 text-primary" : "bg-white/5 text-muted-foreground"}`}>
+                      {note.isFavorite ? <Star className="size-4 fill-current" /> : <BookOpenText className="size-4" />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block break-words text-sm font-semibold text-foreground">{note.title}</span>
+                      <span className="mt-2 flex flex-wrap items-center gap-1.5 font-mono text-[9px] uppercase tracking-wide text-muted-foreground">
+                        {note.blockCount} block{note.blockCount === 1 ? "" : "s"}
+                        <span className="size-0.5 rounded-full bg-current" />
+                        {note.source === "chatgpt" ? "Imported" : note.source === "markdown" ? "Markdown" : "Q&A"}
+                      </span>
+                    </span>
+                    <ChevronRight className="mt-2 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="grid min-h-64 place-items-center rounded-3xl border border-dashed border-white/10 bg-black/15 px-6 text-center">
+              <div><FilePlus2 className="mx-auto size-6 text-primary" /><p className="mt-4 text-sm text-muted-foreground">{query ? "Nothing matches that search." : "This view is empty."}</p><Button className="mt-5" onClick={onCreate}><Plus />New note</Button></div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex shrink-0 items-center justify-between border-t border-white/8 bg-black/20 px-4 py-3 sm:px-6">
+          <Button variant="outline" size="sm" disabled={page.page <= 1} onClick={() => onPageChange(page.page - 1)}><ChevronLeft />Previous</Button>
+          <span className="font-mono text-[9px] uppercase tracking-wide text-muted-foreground">Page {page.page} of {page.totalPages}</span>
+          <Button variant="outline" size="sm" disabled={page.page >= page.totalPages} onClick={() => onPageChange(page.page + 1)}>Next<ChevronRight /></Button>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -834,7 +899,7 @@ export function LibraryApp({
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [collectionEditor, setCollectionEditor] = useState<NoteCollection | null | undefined>();
   const [deletingCollection, setDeletingCollection] = useState<NoteCollection>();
-  const [isMobileLibraryOpen, setIsMobileLibraryOpen] = useState(false);
+  const [isChatBrowserOpen, setIsChatBrowserOpen] = useState(false);
   const [session, setSession] = useState<AuthSession>();
   const [vaultKey, setVaultKey] = useState(() => db.name);
   const [databaseState, setDatabaseState] = useState<
@@ -1253,7 +1318,6 @@ export function LibraryApp({
 
   function selectNote(noteId: string) {
     setSelectedNoteId(noteId);
-    setIsMobileLibraryOpen(false);
     setIsCommandOpen(false);
   }
 
@@ -1269,7 +1333,6 @@ export function LibraryApp({
     setPage(1);
     setSelectedNoteId(noteId);
     setIsNewNoteOpen(false);
-    setIsMobileLibraryOpen(false);
     setIsCommandOpen(false);
   }
 
@@ -1278,7 +1341,6 @@ export function LibraryApp({
     setCollectionId(undefined);
     setPage(1);
     setSelectedNoteId(undefined);
-    setIsMobileLibraryOpen(false);
   }
 
   const sidebarProps: LibrarySidebarProps = {
@@ -1309,6 +1371,7 @@ export function LibraryApp({
     },
     onSelect: selectNote,
     onCreate: () => void createNote(),
+    onBrowseAll: () => setIsChatBrowserOpen(true),
   };
 
   if (databaseState.status === "loading") return <LibraryLoading />;
@@ -1517,20 +1580,10 @@ export function LibraryApp({
               <Link href="/history"><ArrowLeft /></Link>
             </Button>
           ) : (
-            <Sheet open={isMobileLibraryOpen} onOpenChange={setIsMobileLibraryOpen}>
-              <SheetTrigger asChild>
-                <Button variant="outline" size="icon-lg" className="me-2 lg:hidden" aria-label="Open all chats">
-                  <Menu />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-screen max-w-none border-e-white/10 p-0 sm:w-[390px]">
-                <SheetHeader className="sr-only">
-                  <SheetTitle>All chats and notes</SheetTitle>
-                  <SheetDescription>Browse every chat, collection, and saved note.</SheetDescription>
-                </SheetHeader>
-                <LibrarySidebar {...sidebarProps} />
-              </SheetContent>
-            </Sheet>
+            <Button variant="outline" className="me-2 h-9 gap-2 px-2.5 sm:px-3" aria-label="Open all chats" onClick={() => setIsChatBrowserOpen(true)}>
+              <Menu />
+              <span className="hidden sm:inline">All chats</span>
+            </Button>
           )}
 
           <Link className="flex items-center gap-2.5" href="/" aria-label="ChatSaver home">
@@ -1722,6 +1775,12 @@ export function LibraryApp({
 
         <SiteFooter compact />
       </div>
+
+      <ChatBrowserDrawer
+        {...sidebarProps}
+        open={isChatBrowserOpen}
+        onOpenChange={setIsChatBrowserOpen}
+      />
 
       {isImportOpen ? (
         <ImportDialog
