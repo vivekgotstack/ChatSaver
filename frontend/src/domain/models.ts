@@ -40,8 +40,18 @@ export interface Note {
   source: NoteSource;
   isFavorite: boolean;
   isArchived: boolean;
+  collectionIds: string[];
   blockCount: number;
   searchText: string;
+  createdAt: string;
+  updatedAt: string;
+  syncStatus: SyncStatus;
+  serverVersion?: number;
+}
+
+export interface NoteCollection {
+  id: string;
+  name: string;
   createdAt: string;
   updatedAt: string;
   syncStatus: SyncStatus;
@@ -73,7 +83,7 @@ export interface ImportRecord {
 
 export interface OutboxMutation {
   id: string;
-  entityType: "conversation" | "message" | "note" | "noteBlock";
+  entityType: "collection" | "conversation" | "message" | "note" | "noteBlock";
   entityId: string;
   operation: "create" | "update" | "delete";
   payload: unknown;
@@ -102,6 +112,7 @@ export interface VaultBackup {
   messages: Message[];
   notes: Note[];
   noteBlocks: NoteBlock[];
+  collections?: NoteCollection[];
   imports: ImportRecord[];
 }
 

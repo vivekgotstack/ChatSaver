@@ -234,6 +234,29 @@ class MessageEntity {
 }
 
 @Entity
+@Table(name = "note_collection", uniqueConstraints = {
+        @UniqueConstraint(name = "uq_note_collection_user_client", columnNames = {"user_id", "client_id"})
+}, indexes = @Index(name = "idx_note_collection_user_updated", columnList = "user_id,updated_at,id"))
+class NoteCollectionEntity {
+    @Id
+    UUID id;
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    AppUserEntity user;
+    @Column(name = "client_id", nullable = false)
+    UUID clientId;
+    @Column(nullable = false, length = 80)
+    String name;
+    @Column(nullable = false, columnDefinition = "bigint default 1")
+    long version;
+    @Column(name = "created_at", nullable = false, columnDefinition = "timestamptz default now()")
+    Instant createdAt;
+    @Column(name = "updated_at", nullable = false, columnDefinition = "timestamptz default now()")
+    Instant updatedAt;
+}
+
+@Entity
 @Table(name = "note", uniqueConstraints = @UniqueConstraint(
         name = "uq_note_user_client", columnNames = {"user_id", "client_id"}), indexes = {
         @Index(name = "idx_note_user_updated", columnList = "user_id,updated_at,id"),
@@ -261,6 +284,8 @@ class NoteEntity {
     boolean favorite;
     @Column(name = "is_archived", nullable = false, columnDefinition = "boolean default false")
     boolean archived;
+    @Column(name = "collection_ids", nullable = false, columnDefinition = "text default ''")
+    String collectionIds;
     @Column(nullable = false, columnDefinition = "bigint default 1")
     long version;
     @Column(name = "created_at", nullable = false, columnDefinition = "timestamptz default now()")

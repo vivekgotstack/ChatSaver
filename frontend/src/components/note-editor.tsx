@@ -16,6 +16,7 @@ import {
   Eye,
   FileDown,
   FileText,
+  Folder,
   GripVertical,
   Heading1,
   Heading2,
@@ -34,13 +35,14 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { Note, NoteBlock } from "@/domain/models";
+import type { Note, NoteBlock, NoteCollection } from "@/domain/models";
 import {
   addNoteBlock,
   deleteNote,
   deleteNoteBlock,
   toggleArchived,
   toggleFavorite,
+  toggleNoteCollection,
   updateNoteBlock,
   updateNoteTitle,
 } from "@/lib/db/database";
@@ -65,6 +67,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuCheckboxItem,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -82,6 +85,7 @@ import {
 interface NoteEditorProps {
   note?: Note;
   blocks: NoteBlock[];
+  collections: NoteCollection[];
   emptyView?: "library" | "history";
   onDeleted: () => void;
   onArchived: () => void;
@@ -680,6 +684,7 @@ function EmptyEditor({
 export function NoteEditor({
   note,
   blocks,
+  collections,
   emptyView = "library",
   onDeleted,
   onArchived,
@@ -747,6 +752,42 @@ export function NoteEditor({
             </div>
 
             <div className="flex items-center gap-2">
+              <DropdownMenu>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant={(note.collectionIds?.length ?? 0) > 0 ? "secondary" : "outline"}
+                        size="icon-lg"
+                        aria-label="Add note to collections"
+                      >
+                        <Folder />
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>Collections</TooltipContent>
+                </Tooltip>
+                <DropdownMenuContent align="end" className="w-60">
+                  <DropdownMenuLabel>Organize in collections</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {collections.map((collection) => (
+                    <DropdownMenuCheckboxItem
+                      key={collection.id}
+                      checked={(note.collectionIds ?? []).includes(collection.id)}
+                      onCheckedChange={() => void toggleNoteCollection(note.id, collection.id)}
+                    >
+                      <Folder />
+                      <span className="truncate">{collection.name}</span>
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  {collections.length === 0 ? (
+                    <DropdownMenuItem disabled>
+                      Create a collection from the library sidebar
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button

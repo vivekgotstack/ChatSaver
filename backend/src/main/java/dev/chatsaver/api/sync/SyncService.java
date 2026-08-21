@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.ArrayList;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -24,7 +25,7 @@ import dev.chatsaver.api.sync.SyncController.Mutation;
 public class SyncService {
 
     private static final List<String> ENTITY_TYPES =
-            List.of("conversation", "message", "note", "noteBlock");
+            List.of("collection", "conversation", "message", "note", "noteBlock");
     private final JdbcTemplate jdbc;
 
     public SyncService(JdbcTemplate jdbc) {
@@ -84,6 +85,18 @@ public class SyncService {
         long cursor = latest == null ? 0 : latest;
         long after = requestedAfter > cursor ? 0 : requestedAfter;
 
+        List<Map<String, Object>> collections = jdbc.query("""
+                SELECT client_id, name, created_at, updated_at, version
+                FROM note_collection
+                WHERE user_id = ?
+                  AND (? = 0 OR client_id IN (
+                      SELECT client_id FROM change_event
+                      WHERE user_id = ? AND cursor > ? AND cursor <= ?
+                        AND entity_type = 'collection' AND client_id IS NOT NULL
+                  ))
+                ORDER BY updated_at, id
+                """, (rs, row) -> collection(rs), userId, after, userId, after, cursor);
+
         List<Map<String, Object>> conversations = jdbc.query("""
                 SELECT client_id, external_conversation_id, title, source,
                        source_created_at, created_at, updated_at, version
@@ -115,7 +128,7 @@ public class SyncService {
 
         List<Map<String, Object>> notes = jdbc.query("""
                 SELECT n.client_id, c.client_id AS conversation_client_id,
-                       n.title, n.source, n.is_favorite, n.is_archived,
+                       n.title, n.source, n.is_favorite, n.is_archived, n.collection_ids,
                        (SELECT count(*) FROM note_block count_block WHERE count_block.note_id = n.id) AS block_count,
                        n.created_at, n.updated_at, n.version
                 FROM note n
@@ -144,13 +157,14 @@ public class SyncService {
                 """, (rs, row) -> block(rs), userId, after, userId, after, cursor);
 
         DeletedEntities deleted = new DeletedEntities(
+                deletedIds("collection", userId, after, cursor),
                 deletedIds("conversation", userId, after, cursor),
                 deletedIds("message", userId, after, cursor),
                 deletedIds("note", userId, after, cursor),
                 deletedIds("noteBlock", userId, after, cursor));
         jdbc.update("UPDATE device SET last_sync_cursor = ?, last_seen_at = now() WHERE id = ?",
                 cursor, user.deviceId());
-        return new VaultSnapshot(conversations, messages, notes, blocks, deleted, cursor, Instant.now());
+        return new VaultSnapshot(collections, conversations, messages, notes, blocks, deleted, cursor, Instant.now());
     }
 
     private EntityVersion applyMutation(UUID userId, Mutation mutation) {
@@ -161,12 +175,37 @@ public class SyncService {
             return null;
         }
         return switch (mutation.entityType()) {
+            case "collection" -> upsertCollection(userId, mutation);
             case "conversation" -> upsertConversation(userId, mutation);
             case "message" -> upsertMessage(userId, mutation);
             case "note" -> upsertNote(userId, mutation);
             case "noteBlock" -> upsertBlock(userId, mutation);
             default -> throw badRequest("Unsupported entity type.");
         };
+    }
+
+    private EntityVersion upsertCollection(UUID userId, Mutation mutation) {
+        Map<String, Object> p = mutation.payload();
+        String name = requiredText(p, "name");
+        if (name.length() > 80) throw badRequest("Collection names cannot exceed 80 characters.");
+        Optional<EntityVersion> existing = lockEntity("note_collection", userId, mutation.entityId());
+        if (existing.isEmpty()) {
+            UUID serverId = UUID.randomUUID();
+            jdbc.update("""
+                    INSERT INTO note_collection
+                        (id, user_id, client_id, name, version, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, 1, ?, ?)
+                    """, serverId, userId, mutation.entityId(), name,
+                    timestampOrNow(p, "createdAt"), timestampOrNow(p, "updatedAt"));
+            return new EntityVersion(serverId, 1);
+        }
+        EntityVersion row = existing.get();
+        long version = row.version() + 1;
+        jdbc.update("""
+                UPDATE note_collection SET name = ?, version = ?, updated_at = now()
+                WHERE id = ?
+                """, name, version, row.serverId());
+        return new EntityVersion(row.serverId(), version);
     }
 
     private EntityVersion upsertConversation(UUID userId, Mutation mutation) {
@@ -238,11 +277,12 @@ public class SyncService {
             jdbc.update("""
                     INSERT INTO note
                         (id, user_id, client_id, conversation_id, title, source,
-                         is_favorite, is_archived, version, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                         is_favorite, is_archived, collection_ids, version, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
                     """, serverId, userId, mutation.entityId(), conversationId,
                     requiredText(p, "title"), requiredText(p, "source").toUpperCase(Locale.ROOT),
                     bool(p, "isFavorite"), bool(p, "isArchived"),
+                    collectionIds(p),
                     timestampOrNow(p, "createdAt"), timestampOrNow(p, "updatedAt"));
             return new EntityVersion(serverId, 1);
         }
@@ -250,11 +290,11 @@ public class SyncService {
         long version = row.version() + 1;
         jdbc.update("""
                 UPDATE note SET conversation_id = ?, title = ?, source = ?, is_favorite = ?,
-                    is_archived = ?, version = ?, updated_at = now()
+                    is_archived = ?, collection_ids = ?, version = ?, updated_at = now()
                 WHERE id = ?
                 """, conversationId, requiredText(p, "title"),
                 requiredText(p, "source").toUpperCase(Locale.ROOT), bool(p, "isFavorite"),
-                bool(p, "isArchived"), version, row.serverId());
+                bool(p, "isArchived"), collectionIds(p), version, row.serverId());
         return new EntityVersion(row.serverId(), version);
     }
 
@@ -309,12 +349,14 @@ public class SyncService {
 
     @Transactional
     public long eraseVault(UUID userId) {
+        markAll("collection", "note_collection", userId);
         markAll("conversation", "conversation", userId);
         markAll("message", "message", userId);
         markAll("note", "note", userId);
         markAll("noteBlock", "note_block", userId);
 
         jdbc.update("DELETE FROM note WHERE user_id = ?", userId);
+        jdbc.update("DELETE FROM note_collection WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM conversation WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM change_event WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM mutation_receipt WHERE user_id = ?", userId);
@@ -399,6 +441,12 @@ public class SyncService {
         return value;
     }
 
+    private static Map<String, Object> collection(ResultSet rs) throws SQLException {
+        Map<String, Object> value = base(rs);
+        value.put("name", rs.getString("name"));
+        return value;
+    }
+
     private static Map<String, Object> message(ResultSet rs) throws SQLException {
         Map<String, Object> value = base(rs);
         value.put("conversationId", rs.getObject("conversation_client_id", UUID.class));
@@ -417,6 +465,7 @@ public class SyncService {
         value.put("source", rs.getString("source").toLowerCase(Locale.ROOT));
         value.put("isFavorite", rs.getBoolean("is_favorite"));
         value.put("isArchived", rs.getBoolean("is_archived"));
+        value.put("collectionIds", collectionIdList(rs.getString("collection_ids")));
         value.put("blockCount", rs.getInt("block_count"));
         value.put("searchText", "");
         return value;
@@ -456,6 +505,7 @@ public class SyncService {
 
     private static String table(String entityType) {
         return switch (entityType) {
+            case "collection" -> "note_collection";
             case "conversation" -> "conversation";
             case "message" -> "message";
             case "note" -> "note";
@@ -482,6 +532,28 @@ public class SyncService {
 
     private static boolean bool(Map<String, Object> payload, String key) {
         return Boolean.parseBoolean(text(payload, key));
+    }
+
+    private static String collectionIds(Map<String, Object> payload) {
+        Object raw = payload.get("collectionIds");
+        if (raw == null) return "";
+        if (!(raw instanceof List<?> values) || values.size() > 100) {
+            throw badRequest("Invalid collection membership.");
+        }
+        List<String> ids = new ArrayList<>();
+        for (Object value : values) {
+            try {
+                ids.add(UUID.fromString(String.valueOf(value)).toString());
+            } catch (IllegalArgumentException exception) {
+                throw badRequest("Invalid collection identifier.");
+            }
+        }
+        return String.join(",", ids.stream().distinct().toList());
+    }
+
+    private static List<String> collectionIdList(String value) {
+        if (value == null || value.isBlank()) return List.of();
+        return List.of(value.split(","));
     }
 
     private static int integer(Map<String, Object> payload, String key) {
@@ -530,6 +602,7 @@ public class SyncService {
     }
 
     public record VaultSnapshot(
+            List<Map<String, Object>> collections,
             List<Map<String, Object>> conversations,
             List<Map<String, Object>> messages,
             List<Map<String, Object>> notes,
@@ -543,6 +616,7 @@ public class SyncService {
     }
 
     public record DeletedEntities(
+            List<UUID> collections,
             List<UUID> conversations,
             List<UUID> messages,
             List<UUID> notes,

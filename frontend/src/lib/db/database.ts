@@ -8,6 +8,7 @@ import type {
   NormalizedConversation,
   Note,
   NoteBlock,
+  NoteCollection,
   NotesPage,
   NoteSort,
   OutboxMutation,
@@ -22,6 +23,7 @@ class ChatSaverDatabase extends Dexie {
   messages!: EntityTable<Message, "id">;
   notes!: EntityTable<Note, "id">;
   noteBlocks!: EntityTable<NoteBlock, "id">;
+  collections!: EntityTable<NoteCollection, "id">;
   imports!: EntityTable<ImportRecord, "id">;
   outbox!: EntityTable<OutboxMutation, "id">;
   syncMetadata!: EntityTable<SyncMetadata, "key">;
@@ -117,6 +119,23 @@ class ChatSaverDatabase extends Dexie {
       outbox: "&id, [entityType+entityId], entityType, entityId, createdAt",
       syncMetadata: "&key",
     });
+    this.version(5)
+      .stores({
+        conversations: "&id, &externalId, title, updatedAt, syncStatus",
+        messages: "&id, conversationId, role, [conversationId+sortIndex], updatedAt",
+        notes:
+          "&id, conversationId, title, source, isFavorite, isArchived, updatedAt, syncStatus",
+        noteBlocks: "&id, noteId, [noteId+position], updatedAt",
+        collections: "&id, name, updatedAt, syncStatus",
+        imports: "&id, createdAt",
+        outbox: "&id, [entityType+entityId], entityType, entityId, createdAt",
+        syncMetadata: "&key",
+      })
+      .upgrade((transaction) =>
+        transaction.table<Note, string>("notes").toCollection().modify((note) => {
+          note.collectionIds = [];
+        }),
+      );
   }
 }
 
@@ -184,6 +203,7 @@ function guestBackupSignature(backup: VaultBackup): string {
     ...backup.messages,
     ...backup.notes,
     ...backup.noteBlocks,
+    ...(backup.collections ?? []),
     ...backup.imports,
   ];
   return records
@@ -209,6 +229,7 @@ export async function activateAccountVault(
     || guestBackup.messages.length > 0
     || guestBackup.notes.length > 0
     || guestBackup.noteBlocks.length > 0
+    || (guestBackup.collections?.length ?? 0) > 0
     || guestBackup.imports.length > 0;
   if (!hasGuestData) return { databaseName, importedNotes: 0 };
 
@@ -308,7 +329,7 @@ async function queueMutation(mutation: OutboxMutation): Promise<void> {
 
 function queueCreate(
   entityType: OutboxMutation["entityType"],
-  entity: Conversation | Message | Note | NoteBlock,
+  entity: Conversation | Message | Note | NoteBlock | NoteCollection,
 ): OutboxMutation {
   return {
     id: makeId(),
@@ -424,6 +445,7 @@ export async function persistImportedConversations(
               source: "chatgpt",
               isFavorite: false,
               isArchived: false,
+              collectionIds: [],
               blockCount: blocks.length,
               searchText: normalizeSearchText(
                 sourceTitle,
@@ -563,6 +585,7 @@ export async function createBlankNote(format: ManualNoteFormat): Promise<string>
     source: format === "markdown" ? "markdown" : "manual",
     isFavorite: false,
     isArchived: false,
+    collectionIds: [],
     blockCount: 1,
     searchText: "untitled note",
     createdAt: timestamp,
@@ -601,6 +624,7 @@ export async function createMarkdownNote(title: string, content: string): Promis
     source: "markdown",
     isFavorite: false,
     isArchived: false,
+    collectionIds: [],
     blockCount: 1,
     searchText: normalizeSearchText(safeTitle, content),
     createdAt: timestamp,
@@ -760,6 +784,109 @@ export async function toggleFavorite(noteId: string): Promise<void> {
   });
 }
 
+function collectionName(value: string): string {
+  const name = toPlainText(value).replace(/\s+/g, " ").trim().slice(0, 80);
+  if (!name) throw new Error("Enter a collection name.");
+  return name;
+}
+
+export async function createCollection(nameInput: string): Promise<string> {
+  const name = collectionName(nameInput);
+  const duplicate = await db.collections
+    .filter((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase())
+    .first();
+  if (duplicate) throw new Error("A collection with this name already exists.");
+  const timestamp = now();
+  const collection: NoteCollection = {
+    id: makeId(),
+    name,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    syncStatus: "pending",
+  };
+  await db.transaction("rw", [db.collections, db.outbox], async () => {
+    await db.collections.add(collection);
+    await queueMutation(queueCreate("collection", collection));
+  });
+  return collection.id;
+}
+
+export async function renameCollection(id: string, nameInput: string): Promise<void> {
+  const name = collectionName(nameInput);
+  const duplicate = await db.collections
+    .filter((item) => item.id !== id && item.name.toLocaleLowerCase() === name.toLocaleLowerCase())
+    .first();
+  if (duplicate) throw new Error("A collection with this name already exists.");
+  await db.transaction("rw", [db.collections, db.outbox], async () => {
+    const current = await db.collections.get(id);
+    if (!current || current.name === name) return;
+    const timestamp = now();
+    const updated: NoteCollection = {
+      ...current,
+      name,
+      updatedAt: timestamp,
+      syncStatus: "pending",
+    };
+    await db.collections.put(updated);
+    await queueMutation({
+      id: makeId(), entityType: "collection", entityId: id, operation: "update",
+      payload: updated, createdAt: timestamp, attempts: 0,
+    });
+  });
+}
+
+export async function toggleNoteCollection(noteId: string, collectionId: string): Promise<void> {
+  await db.transaction("rw", [db.notes, db.collections, db.outbox], async () => {
+    const [note, collection] = await Promise.all([
+      db.notes.get(noteId),
+      db.collections.get(collectionId),
+    ]);
+    if (!note || !collection) return;
+    const currentIds = note.collectionIds ?? [];
+    const timestamp = now();
+    const updated: Note = {
+      ...note,
+      collectionIds: currentIds.includes(collectionId)
+        ? currentIds.filter((id) => id !== collectionId)
+        : [...currentIds, collectionId],
+      updatedAt: timestamp,
+      syncStatus: "pending",
+    };
+    await db.notes.put(updated);
+    await queueMutation({
+      id: makeId(), entityType: "note", entityId: noteId, operation: "update",
+      payload: updated, createdAt: timestamp, attempts: 0,
+    });
+  });
+}
+
+export async function deleteCollection(id: string): Promise<void> {
+  await db.transaction("rw", [db.collections, db.notes, db.outbox], async () => {
+    const collection = await db.collections.get(id);
+    if (!collection) return;
+    const timestamp = now();
+    const notes = await db.notes.filter((note) => (note.collectionIds ?? []).includes(id)).toArray();
+    for (const note of notes) {
+      const updated: Note = {
+        ...note,
+        collectionIds: note.collectionIds.filter((collectionId) => collectionId !== id),
+        updatedAt: timestamp,
+        syncStatus: "pending",
+      };
+      await db.notes.put(updated);
+      await queueMutation({
+        id: makeId(), entityType: "note", entityId: note.id, operation: "update",
+        payload: updated, createdAt: timestamp, attempts: 0,
+      });
+    }
+    await db.collections.delete(id);
+    await queueMutation({
+      id: makeId(), entityType: "collection", entityId: id, operation: "delete",
+      payload: { id }, createdAt: timestamp, attempts: 0,
+    });
+  });
+}
+
 export async function deleteNote(noteId: string): Promise<void> {
   await db.transaction(
     "rw",
@@ -854,6 +981,7 @@ export async function queryNotesPage(options: {
   filter: LibraryFilter;
   query: string;
   sort: NoteSort;
+  collectionId?: string;
 }): Promise<NotesPage> {
   const normalizedQuery = normalizeSearchText(options.query);
   const sorted =
@@ -871,7 +999,9 @@ export async function queryNotesPage(options: {
           (options.filter === "all" ||
             (options.filter === "favorites" && note.isFavorite) ||
             (options.filter === "imported" && note.source === "chatgpt"));
-    return matchesSection && (!normalizedQuery || note.searchText.includes(normalizedQuery));
+    return matchesSection
+      && (!options.collectionId || (note.collectionIds ?? []).includes(options.collectionId))
+      && (!normalizedQuery || note.searchText.includes(normalizedQuery));
   });
 
   const totalItems = await filtered.clone().count();
@@ -904,11 +1034,12 @@ export async function getLibraryCounts(): Promise<Record<LibraryFilter, number>>
 }
 
 export async function createVaultBackup(): Promise<VaultBackup> {
-  const [conversations, messages, notes, noteBlocks, imports] = await Promise.all([
+  const [conversations, messages, notes, noteBlocks, collections, imports] = await Promise.all([
     db.conversations.toArray(),
     db.messages.toArray(),
     db.notes.toArray(),
     db.noteBlocks.toArray(),
+    db.collections.toArray(),
     db.imports.toArray(),
   ]);
   return {
@@ -919,6 +1050,7 @@ export async function createVaultBackup(): Promise<VaultBackup> {
     messages,
     notes,
     noteBlocks,
+    collections,
     imports,
   };
 }
@@ -988,6 +1120,7 @@ function isVaultBackup(value: unknown): value is VaultBackup {
     Array.isArray(candidate.messages) &&
     Array.isArray(candidate.notes) &&
     Array.isArray(candidate.noteBlocks) &&
+    (candidate.collections === undefined || Array.isArray(candidate.collections)) &&
     Array.isArray(candidate.imports) &&
     candidate.conversations.every(hasStringId) &&
     candidate.messages.every(hasStringId) &&
@@ -1003,6 +1136,12 @@ function isVaultBackup(value: unknown): value is VaultBackup {
         "noteId" in block &&
         typeof block.noteId === "string",
     ) &&
+    (candidate.collections ?? []).every(
+      (collection) =>
+        hasStringId(collection) &&
+        "name" in collection &&
+        typeof collection.name === "string",
+    ) &&
     candidate.imports.every(hasStringId)
   );
 }
@@ -1014,7 +1153,7 @@ export async function restoreVaultBackup(value: unknown): Promise<number> {
 
   await db.transaction(
     "rw",
-    [db.conversations, db.messages, db.notes, db.noteBlocks, db.imports, db.outbox],
+    [db.conversations, db.messages, db.notes, db.noteBlocks, db.collections, db.imports, db.outbox],
     async () => {
       const conversations = value.conversations.map((conversation) => ({
         ...conversation,
@@ -1043,6 +1182,7 @@ export async function restoreVaultBackup(value: unknown): Promise<number> {
         title: toPlainText(note.title) || "Untitled note",
         source: note.source ?? (note.conversationId ? "chatgpt" : "manual"),
         isArchived: note.isArchived ?? false,
+        collectionIds: note.collectionIds ?? [],
         searchText: normalizeSearchText(
           note.title,
           ...(blocksByNote.get(note.id) ?? []).flatMap((block) => [
@@ -1052,11 +1192,17 @@ export async function restoreVaultBackup(value: unknown): Promise<number> {
         ),
         syncStatus: "pending" as const,
       }));
+      const collections = (value.collections ?? []).map((collection) => ({
+        ...collection,
+        name: collectionName(collection.name),
+        syncStatus: "pending" as const,
+      }));
 
       await db.conversations.bulkPut(conversations);
       await db.messages.bulkPut(messages);
       await db.notes.bulkPut(notes);
       await db.noteBlocks.bulkPut(blocks);
+      await db.collections.bulkPut(collections);
       await db.imports.bulkPut(value.imports);
       for (const entity of conversations) {
         await queueMutation(queueCreate("conversation", entity));
@@ -1069,6 +1215,9 @@ export async function restoreVaultBackup(value: unknown): Promise<number> {
       }
       for (const entity of blocks) {
         await queueMutation(queueCreate("noteBlock", entity));
+      }
+      for (const entity of collections) {
+        await queueMutation(queueCreate("collection", entity));
       }
     },
   );

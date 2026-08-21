@@ -19,17 +19,22 @@ import {
   FileDown,
   FilePlus2,
   FileText,
+  Folder,
+  FolderPlus,
   FolderHeart,
   Import,
   LoaderCircle,
   Menu,
   MessageSquareText,
+  MoreHorizontal,
+  Pencil,
   Plus,
   RotateCcw,
   Search,
   Settings2,
   ShieldCheck,
   Star,
+  Trash2,
   WandSparkles,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -37,6 +42,7 @@ import type {
   LibraryFilter,
   ManualNoteFormat,
   Note,
+  NoteCollection,
   NotesPage,
   NoteSort,
 } from "@/domain/models";
@@ -46,11 +52,14 @@ import { ConnectedIntegrationsShortcut } from "@/components/connected-integratio
 import {
   activateAccountVault,
   confirmGuestMigration,
+  createCollection,
   createBlankNote,
   db,
+  deleteCollection,
   endAccountVault,
   getLibraryCounts,
   queryNotesPage,
+  renameCollection,
 } from "@/lib/db/database";
 import { useLiveQuery } from "@/hooks/use-live-query";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -95,6 +104,22 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SiteFooter } from "@/components/site-footer";
 import { MessageVaultVisual } from "@/components/message-vault-visual";
 import {
@@ -289,6 +314,77 @@ const FILTERS: Array<{
   { id: "archived", label: "Archive", icon: Archive },
 ];
 
+interface CollectionSummary extends NoteCollection {
+  noteCount: number;
+}
+
+function CollectionNameDialog({
+  collection,
+  open,
+  onOpenChange,
+  onSaved,
+}: {
+  collection?: NoteCollection;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSaved: (id: string) => void;
+}) {
+  const [name, setName] = useState(collection?.name ?? "");
+
+  useEffect(() => {
+    if (open) setName(collection?.name ?? "");
+  }, [collection?.id, collection?.name, open]);
+
+  async function save() {
+    try {
+      if (collection) {
+        await renameCollection(collection.id, name);
+        onSaved(collection.id);
+        toast.success("Collection renamed");
+      } else {
+        const id = await createCollection(name);
+        onSaved(id);
+        toast.success("Collection created");
+      }
+      onOpenChange(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The collection could not be saved.");
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{collection ? "Rename collection" : "New collection"}</DialogTitle>
+          <DialogDescription>
+            Collections sync with your account while Favorites continues working independently.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void save();
+          }}
+        >
+          <Input
+            autoFocus
+            aria-label="Collection name"
+            maxLength={80}
+            placeholder="Work, Research, Ideas…"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+          <Button className="w-full" type="submit" disabled={!name.trim()}>
+            {collection ? "Save name" : "Create collection"}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 interface LibrarySidebarProps {
   page: NotesPage;
   selectedNoteId?: string;
@@ -296,6 +392,8 @@ interface LibrarySidebarProps {
   filter: LibraryFilter;
   sort: NoteSort;
   counts: Record<LibraryFilter, number>;
+  collections: CollectionSummary[];
+  collectionId?: string;
   stats: {
     conversations: number;
     imports: number;
@@ -303,6 +401,9 @@ interface LibrarySidebarProps {
   };
   onQueryChange: (query: string) => void;
   onFilterChange: (filter: LibraryFilter) => void;
+  onCollectionChange: (collectionId: string) => void;
+  onEditCollection: (collection?: NoteCollection) => void;
+  onDeleteCollection: (collection: NoteCollection) => void;
   onSortChange: (sort: NoteSort) => void;
   onPageChange: (page: number) => void;
   onSelect: (noteId: string) => void;
@@ -372,9 +473,14 @@ function LibrarySidebar({
   filter,
   sort,
   counts,
+  collections,
+  collectionId,
   stats,
   onQueryChange,
   onFilterChange,
+  onCollectionChange,
+  onEditCollection,
+  onDeleteCollection,
   onSortChange,
   onPageChange,
   onSelect,
@@ -410,7 +516,7 @@ function LibrarySidebar({
 
       <nav className="shrink-0 space-y-1 px-3" aria-label="Library sections">
         {FILTERS.map((item) => {
-          const active = filter === item.id;
+          const active = !collectionId && filter === item.id;
           return (
             <Button
               key={item.id}
@@ -430,10 +536,70 @@ function LibrarySidebar({
         })}
       </nav>
 
+      <div className="shrink-0 px-3 pt-5">
+        <div className="mb-1 flex items-center justify-between px-2">
+          <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.17em] text-muted-foreground">
+            Collections
+          </p>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Create collection"
+            onClick={() => onEditCollection()}
+          >
+            <FolderPlus />
+          </Button>
+        </div>
+        <div className="max-h-28 space-y-1 overflow-y-auto pe-1">
+          {collections.map((collection) => (
+            <div className="group flex items-center" key={collection.id}>
+              <Button
+                variant={collectionId === collection.id ? "secondary" : "ghost"}
+                className={`h-9 min-w-0 flex-1 justify-start ${collectionId === collection.id ? "" : "text-muted-foreground"}`}
+                onClick={() => onCollectionChange(collection.id)}
+              >
+                <Folder />
+                <span className="truncate">{collection.name}</span>
+                <span className="ms-auto font-mono text-[10px] text-muted-foreground">
+                  {collection.noteCount}
+                </span>
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon-sm" aria-label={`Manage ${collection.name}`}>
+                    <MoreHorizontal />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  <DropdownMenuItem onSelect={() => onEditCollection(collection)}>
+                    <Pencil /> Rename
+                  </DropdownMenuItem>
+                  <DropdownMenuItem variant="destructive" onSelect={() => onDeleteCollection(collection)}>
+                    <Trash2 /> Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ))}
+          {collections.length === 0 ? (
+            <button
+              type="button"
+              className="w-full rounded-lg border border-dashed border-white/10 px-3 py-2 text-start text-[11px] text-muted-foreground transition-colors hover:border-primary/25 hover:text-foreground"
+              onClick={() => onEditCollection()}
+            >
+              + Organize notes into a collection
+            </button>
+          ) : null}
+        </div>
+      </div>
+
       <div className="flex shrink-0 items-end justify-between gap-2 px-4 pb-2 pt-6">
         <div>
           <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.17em] text-muted-foreground">
-            {query ? "Search results" : FILTERS.find((item) => item.id === filter)?.label}
+            {query
+              ? "Search results"
+              : collections.find((item) => item.id === collectionId)?.name
+                ?? FILTERS.find((item) => item.id === filter)?.label}
           </p>
           <p className="mt-1 text-[11px] text-muted-foreground">
             {page.totalItems} note{page.totalItems === 1 ? "" : "s"}
@@ -557,6 +723,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<LibraryFilter>("all");
+  const [collectionId, setCollectionId] = useState<string>();
   const [sort, setSort] = useState<NoteSort>("updated-desc");
   const [page, setPage] = useState(1);
   const [selectedNoteId, setSelectedNoteId] = useState<string>();
@@ -566,6 +733,8 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
   const [isNewNoteOpen, setIsNewNoteOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isCommandOpen, setIsCommandOpen] = useState(false);
+  const [collectionEditor, setCollectionEditor] = useState<NoteCollection | null | undefined>();
+  const [deletingCollection, setDeletingCollection] = useState<NoteCollection>();
   const [isMobileLibraryOpen, setIsMobileLibraryOpen] = useState(false);
   const [session, setSession] = useState<AuthSession>();
   const [vaultKey, setVaultKey] = useState(() => db.name);
@@ -585,8 +754,9 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
         filter,
         query: deferredQuery,
         sort,
+        collectionId,
       }),
-    [vaultKey, page, filter, deferredQuery, sort],
+    [vaultKey, page, filter, deferredQuery, sort, collectionId],
     EMPTY_PAGE,
   );
   const counts = useLiveQuery(
@@ -595,6 +765,23 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
     { all: 0, favorites: 0, imported: 0, archived: 0 },
   );
   const totalNotes = useLiveQuery(() => db.notes.count(), [vaultKey], 0);
+  const collections = useLiveQuery(
+    async () => {
+      const [items, notes] = await Promise.all([
+        db.collections.orderBy("name").toArray(),
+        db.notes.toArray(),
+      ]);
+      const countsById = new Map<string, number>();
+      for (const note of notes) {
+        for (const id of note.collectionIds ?? []) {
+          countsById.set(id, (countsById.get(id) ?? 0) + 1);
+        }
+      }
+      return items.map((item) => ({ ...item, noteCount: countsById.get(item.id) ?? 0 }));
+    },
+    [vaultKey],
+    [] as CollectionSummary[],
+  );
   const commandNotes = useLiveQuery(
     () => db.notes.orderBy("updatedAt").reverse().filter((note) => !note.isArchived).limit(50).toArray(),
     [vaultKey],
@@ -655,6 +842,8 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
     // dependency would not change, so the database effect could not run again.
     if (nextVaultKey === vaultKey) return;
     setDatabaseState({ status: "loading" });
+    setCollectionId(undefined);
+    setFilter("all");
     setVaultKey(nextVaultKey);
   }
 
@@ -958,6 +1147,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
   async function createNoteWithFormat(format: ManualNoteFormat) {
     const noteId = await createBlankNote(format);
     setFilter("all");
+    setCollectionId(undefined);
     setPage(1);
     setSelectedNoteId(noteId);
     setIsNewNoteOpen(false);
@@ -967,6 +1157,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
 
   function changeFilter(nextFilter: LibraryFilter) {
     setFilter(nextFilter);
+    setCollectionId(undefined);
     setPage(1);
     setSelectedNoteId(undefined);
   }
@@ -978,12 +1169,23 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
     filter,
     sort,
     counts,
+    collections,
+    collectionId,
     stats,
     onQueryChange: (nextQuery) => {
       setQuery(nextQuery);
       setPage(1);
     },
     onFilterChange: changeFilter,
+    onCollectionChange: (nextCollectionId) => {
+      setFilter("all");
+      setCollectionId(nextCollectionId);
+      setPage(1);
+      setSelectedNoteId(undefined);
+      setIsMobileLibraryOpen(false);
+    },
+    onEditCollection: (collection) => setCollectionEditor(collection ?? null),
+    onDeleteCollection: setDeletingCollection,
     onSortChange: (nextSort) => {
       setSort(nextSort);
       setPage(1);
@@ -1148,6 +1350,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
             onImported={(noteId) => {
               if (noteId) {
                 setFilter("all");
+                setCollectionId(undefined);
                 setPage(1);
                 setSelectedNoteId(noteId);
               }
@@ -1339,6 +1542,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
           <NoteEditor
             note={selectedNote}
             blocks={blocks}
+            collections={collections}
             emptyView={historyView ? "history" : "library"}
             onDeleted={() => {
               setSelectedNoteId(undefined);
@@ -1362,6 +1566,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
           onImported={(noteId) => {
             if (noteId) {
               setFilter("all");
+              setCollectionId(undefined);
               setPage(1);
               setSelectedNoteId(noteId);
             }
@@ -1371,6 +1576,54 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
       ) : null}
 
       <NewNoteDialog open={isNewNoteOpen} onOpenChange={setIsNewNoteOpen} onCreate={createNoteWithFormat} />
+
+      <CollectionNameDialog
+        collection={collectionEditor ?? undefined}
+        open={collectionEditor !== undefined}
+        onOpenChange={(open) => {
+          if (!open) setCollectionEditor(undefined);
+        }}
+        onSaved={(id) => {
+          setCollectionId(id);
+          setFilter("all");
+          setPage(1);
+        }}
+      />
+
+      <AlertDialog
+        open={Boolean(deletingCollection)}
+        onOpenChange={(open) => {
+          if (!open) setDeletingCollection(undefined);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete “{deletingCollection?.name}”?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Notes stay safely in your library. Only this collection and its memberships are removed from every synced device.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (!deletingCollection) return;
+                const id = deletingCollection.id;
+                void deleteCollection(id).then(() => {
+                  if (collectionId === id) changeFilter("all");
+                  toast.success("Collection deleted; notes were kept");
+                }).catch((error: unknown) => {
+                  toast.error(error instanceof Error ? error.message : "The collection could not be deleted.");
+                });
+                setDeletingCollection(undefined);
+              }}
+            >
+              Delete collection
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <VaultDialog
         open={isVaultOpen}

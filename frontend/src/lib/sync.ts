@@ -3,6 +3,7 @@ import type {
   Message,
   Note,
   NoteBlock,
+  NoteCollection,
   OutboxMutation,
 } from "@/domain/models";
 import { db } from "@/lib/db/database";
@@ -38,11 +39,13 @@ interface SocketTicket {
 }
 
 interface VaultSnapshot {
+  collections?: NoteCollection[];
   conversations: Conversation[];
   messages: Message[];
   notes: Note[];
   noteBlocks: NoteBlock[];
   deleted: {
+    collections?: string[];
     conversations: string[];
     messages: string[];
     notes: string[];
@@ -279,7 +282,8 @@ export async function synchronizeVault(
   return {
     pushed,
     pulled:
-      snapshot.conversations.length
+      (snapshot.collections?.length ?? 0)
+      + snapshot.conversations.length
       + snapshot.messages.length
       + snapshot.notes.length
       + snapshot.noteBlocks.length,
@@ -347,7 +351,7 @@ async function relatedRecordRepairs(
 
 function repairMutation(
   entityType: OutboxMutation["entityType"],
-  entity: Conversation | Note,
+  entity: Conversation | Note | NoteCollection,
 ): OutboxMutation {
   return {
     id: createClientUuid(),
@@ -367,10 +371,12 @@ function mutationSyncOrder(mutation: OutboxMutation): number {
       message: 3,
       note: 4,
       conversation: 5,
+      collection: 5,
     }[mutation.entityType];
   }
 
   return {
+    collection: 0,
     conversation: 0,
     message: 1,
     note: 1,
@@ -396,10 +402,14 @@ async function applySnapshot(
 ): Promise<void> {
   await vault.transaction(
     "rw",
-    [vault.conversations, vault.messages, vault.notes, vault.noteBlocks, vault.outbox, vault.syncMetadata],
+    [vault.collections, vault.conversations, vault.messages, vault.notes, vault.noteBlocks, vault.outbox, vault.syncMetadata],
     async () => {
       const pending = await vault.outbox.toArray();
       const pendingKeys = new Set(pending.map((item) => `${item.entityType}:${item.entityId}`));
+
+      const collections = (snapshot.collections ?? [])
+        .filter((item) => !pendingKeys.has(`collection:${item.id}`))
+        .map((item) => ({ ...item, syncStatus: "synced" as const }));
 
       const remoteBlocks = snapshot.noteBlocks.filter(
         (block) => !pendingKeys.has(`noteBlock:${block.id}`),
@@ -430,6 +440,7 @@ async function applySnapshot(
         const blocks = await vault.noteBlocks.where("noteId").equals(item.id).sortBy("position");
         notes.push({
           ...item,
+          collectionIds: item.collectionIds ?? [],
           blockCount: blocks.length,
           searchText: [item.title, ...blocks.flatMap((block) => [block.question, block.answer])]
             .join("\n")
@@ -440,6 +451,7 @@ async function applySnapshot(
         });
       }
 
+      await vault.collections.bulkPut(collections);
       await vault.conversations.bulkPut(conversations);
       await vault.messages.bulkPut(messages);
       await vault.notes.bulkPut(notes);
@@ -455,6 +467,7 @@ async function applySnapshot(
         ...deletable("noteBlock", snapshot.deleted.noteBlocks),
       ]);
       await vault.notes.bulkDelete(deletedNotes);
+      await vault.collections.bulkDelete(deletable("collection", snapshot.deleted.collections ?? []));
       await vault.messages.bulkDelete(deletable("message", snapshot.deleted.messages));
       await vault.conversations.bulkDelete(deletable("conversation", snapshot.deleted.conversations));
       await vault.syncMetadata.put({ key: cursorKey, value: snapshot.cursor });
