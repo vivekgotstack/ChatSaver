@@ -308,7 +308,7 @@ export function IntegrationImportDialog({
                 <div><h3 className="text-sm font-medium text-white/90">Versioned Markdown backup</h3><p className="mt-1 text-xs leading-5 text-white/48">Publish every current note into a clean Markdown README. Updating the same path creates recoverable Git history.</p></div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="grid gap-1.5 text-xs text-white/70">New backup repository<Input value={newRepository} onChange={(event) => setNewRepository(event.target.value)} maxLength={100} className="bg-black/30" /></label>
-                  <label className="grid gap-1.5 text-xs text-white/70">Existing owner/repository<Input value={repository} onChange={(event) => setRepository(event.target.value)} placeholder="owner/professional-notes" maxLength={240} className="bg-black/30" /></label>
+                  <label className="grid gap-1.5 text-xs text-white/70">Existing repository or URL<Input value={repository} onChange={(event) => setRepository(event.target.value)} placeholder="owner/professional-notes or GitHub URL" maxLength={240} className="bg-black/30" /></label>
                   <label className="grid gap-1.5 text-xs text-white/70">Backup Markdown path<Input value={backupPath} onChange={(event) => setBackupPath(event.target.value)} maxLength={240} className="bg-black/30" /></label>
                   <label className="grid gap-1.5 text-xs text-white/70">Existing repo branch<Input value={backupBranch} onChange={(event) => setBackupBranch(event.target.value)} maxLength={100} className="bg-black/30" /></label>
                 </div>
