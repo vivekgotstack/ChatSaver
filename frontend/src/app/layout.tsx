@@ -12,6 +12,11 @@ export const metadata: Metadata = {
   description: "A private, flexible workspace for notes, ideas, and everything worth remembering.",
   applicationName: "ChatSaver",
   manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "ChatSaver",
+  },
   icons: {
     icon: [{ url: "/cs-transparent.png", sizes: "1254x1254", type: "image/png" }],
     shortcut: "/cs-transparent.png",
@@ -22,6 +27,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: "#050505",
   colorScheme: "dark",
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

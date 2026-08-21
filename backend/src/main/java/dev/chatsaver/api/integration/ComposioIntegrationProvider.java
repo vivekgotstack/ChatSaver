@@ -41,6 +41,8 @@ public class ComposioIntegrationProvider implements IntegrationProvider {
     private static final int MAX_CONTENT_LENGTH = 500_000;
     private static final Set<String> SEARCH_ACTIONS = Set.of(
             "gmail-search", "drive-search", "notion-search", "slack-search");
+    private static final Set<String> WRITE_ACTIONS = Set.of(
+            "github-publish-backup", "github-create-backup-repo", "slack-send-digest");
     private static final Pattern LINKEDIN_POST_URN = Pattern.compile(
             "urn:li:(?:activity|share|ugcPost):[A-Za-z0-9_-]{4,128}", Pattern.CASE_INSENSITIVE);
     private static final Pattern LINKEDIN_ACTIVITY_ID = Pattern.compile(
@@ -175,12 +177,27 @@ public class ComposioIntegrationProvider implements IntegrationProvider {
             String action,
             Map<String, Object> input) {
         IntegrationConnection owned = requireOwnedConnection(userId, connectionId);
+        if ("github-create-backup-repo".equals(action)) {
+            requireToolkit(owned, "github");
+            return new ToolExecutionResult(action, true, createGithubBackupRepository(userId, owned, input));
+        }
+        if ("github-publish-backup".equals(action)) {
+            requireToolkit(owned, "github");
+            return new ToolExecutionResult(action, true, publishGithubBackup(userId, owned, input));
+        }
         ToolRequest request = toolRequest(owned.toolkit(), action, input);
         JsonNode data = executeTool(userId, owned, request);
         Map<String, Object> safeResult = SEARCH_ACTIONS.contains(action)
                 ? normalizeSearch(owned.toolkit(), data)
+                : WRITE_ACTIONS.contains(action) ? normalizeWriteResult(owned.toolkit(), data, null)
                 : normalizeDocument(owned.toolkit(), data, request.fallbackTitle());
         return new ToolExecutionResult(action, true, safeResult);
+    }
+
+    private static void requireToolkit(IntegrationConnection connection, String toolkit) {
+        if (!toolkit.equals(connection.toolkit())) {
+            throw new IntegrationException(HttpStatus.BAD_REQUEST, "That action is not available for this connection.");
+        }
     }
 
     private ToolRequest toolRequest(String toolkit, String action, Map<String, Object> input) {
@@ -230,6 +247,12 @@ public class ComposioIntegrationProvider implements IntegrationProvider {
                             "channel", requiredInput(input, "channel", 256),
                             "ts", requiredInput(input, "threadTs", 64)),
                     optionalInput(input, "title", 160, "Slack thread"));
+            case "slack:slack-send-digest" -> new ToolRequest(
+                    "SLACK_SEND_MESSAGE",
+                    Map.of(
+                            "channel", requiredInput(input, "channel", 128),
+                            "markdown_text", requiredInput(input, "content", 15_000)),
+                    "ChatSaver digest");
             case "github:github-import" -> githubRequest(requiredInput(input, "url", 2048));
             case "linkedin:linkedin-import-profile" -> new ToolRequest(
                     "LINKEDIN_GET_MY_INFO", Map.of(), "LinkedIn profile");
@@ -239,6 +262,77 @@ public class ComposioIntegrationProvider implements IntegrationProvider {
                     "LinkedIn post");
             default -> throw new IntegrationException(HttpStatus.BAD_REQUEST, "That integration action is not allowed.");
         };
+    }
+
+    private Map<String, Object> createGithubBackupRepository(
+            UUID userId,
+            IntegrationConnection connection,
+            Map<String, Object> input) {
+        String repository = requiredInput(input, "repository", 100);
+        if (!repository.matches("[A-Za-z0-9_.-]{1,100}")) {
+            throw new IntegrationException(HttpStatus.BAD_REQUEST, "Enter a valid GitHub repository name.");
+        }
+        boolean makePrivate = !"false".equalsIgnoreCase(optionalInput(input, "private", 5, "true"));
+        JsonNode created = executeTool(userId, connection, new ToolRequest(
+                "GITHUB_CREATE_A_REPOSITORY_FOR_THE_AUTHENTICATED_USER",
+                Map.of(
+                        "name", repository,
+                        "description", "Versioned Markdown backup created by ChatSaver",
+                        "private", makePrivate,
+                        "auto_init", true),
+                repository));
+        String fullName = firstText(created, "full_name");
+        String owner = fullName != null && fullName.contains("/")
+                ? fullName.substring(0, fullName.indexOf('/'))
+                : firstText(created.path("owner"), "login");
+        if (owner == null || owner.isBlank()) {
+            throw new IntegrationException(HttpStatus.BAD_GATEWAY, "GitHub created the repository but did not identify its owner.");
+        }
+        Map<String, Object> publishInput = new LinkedHashMap<>(input);
+        publishInput.put("repository", owner + "/" + repository);
+        publishInput.put("branch", optionalInput(createdToInput(created), "branch", 100, "main"));
+        return publishGithubBackup(userId, connection, publishInput);
+    }
+
+    private static Map<String, Object> createdToInput(JsonNode created) {
+        String defaultBranch = firstText(created, "default_branch");
+        return defaultBranch == null ? Map.of() : Map.of("branch", defaultBranch);
+    }
+
+    private Map<String, Object> publishGithubBackup(
+            UUID userId,
+            IntegrationConnection connection,
+            Map<String, Object> input) {
+        String[] target = githubRepository(requiredInput(input, "repository", 240));
+        String path = optionalInput(input, "path", 240, "ChatSaverBackup/README.md");
+        if (path.startsWith("/") || path.contains("..") || !path.matches("[A-Za-z0-9_./ -]{1,240}\\.md")) {
+            throw new IntegrationException(HttpStatus.BAD_REQUEST, "Use a safe Markdown file path inside the repository.");
+        }
+        String branch = optionalInput(input, "branch", 100, "main");
+        if (!branch.matches("[A-Za-z0-9._/-]{1,100}") || branch.contains("..")) {
+            throw new IntegrationException(HttpStatus.BAD_REQUEST, "Enter a valid GitHub branch name.");
+        }
+        String content = requiredInput(input, "content", 440_000);
+        Map<String, Object> arguments = new LinkedHashMap<>();
+        arguments.put("owner", target[0]);
+        arguments.put("repo", target[1]);
+        arguments.put("path", path);
+        arguments.put("message", optionalInput(input, "message", 160, "Update ChatSaver Markdown backup"));
+        arguments.put("content", Base64.getEncoder().encodeToString(content.getBytes(StandardCharsets.UTF_8)));
+        arguments.put("branch", branch);
+        JsonNode written = executeTool(userId, connection, new ToolRequest(
+                "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS", Map.copyOf(arguments), path));
+        String url = "https://github.com/" + target[0] + "/" + target[1] + "/blob/" + branch + "/" + path.replace(" ", "%20");
+        return normalizeWriteResult("github", written, url);
+    }
+
+    private static String[] githubRepository(String rawValue) {
+        String value = rawValue.trim().replaceFirst("^https://(?:www\\.)?github\\.com/", "").replaceFirst("\\.git$", "");
+        String[] parts = value.split("/");
+        if (parts.length != 2 || !parts[0].matches("[A-Za-z0-9_.-]{1,100}") || !parts[1].matches("[A-Za-z0-9_.-]{1,100}")) {
+            throw new IntegrationException(HttpStatus.BAD_REQUEST, "Enter a GitHub repository as owner/repository.");
+        }
+        return parts;
     }
 
     private ToolRequest githubRequest(String rawUrl) {
@@ -314,7 +408,7 @@ public class ComposioIntegrationProvider implements IntegrationProvider {
                 .retrieve()
                 .body(JsonNode.class));
         if (response == null || !response.path("successful").asBoolean(false)) {
-            throw new IntegrationException(HttpStatus.BAD_GATEWAY, "The connected service could not complete that read-only action.");
+            throw new IntegrationException(HttpStatus.BAD_GATEWAY, "The connected service could not complete that action.");
         }
         JsonNode data = response.path("data");
         if (data.path("data").isObject() || data.path("data").isArray()) data = data.path("data");
@@ -338,6 +432,16 @@ public class ComposioIntegrationProvider implements IntegrationProvider {
             }
         }
         return Map.of("items", List.copyOf(items));
+    }
+
+    private Map<String, Object> normalizeWriteResult(String toolkit, JsonNode data, String fallbackUrl) {
+        String url = firstText(data, "html_url", "permalink", "url");
+        Map<String, Object> operation = new LinkedHashMap<>();
+        operation.put("service", displayName(toolkit));
+        operation.put("message", "github".equals(toolkit) ? "Markdown backup committed" : "Digest published");
+        if (url != null && url.startsWith("https://")) operation.put("url", limited(url, 2048, ""));
+        else if (fallbackUrl != null) operation.put("url", fallbackUrl);
+        return Map.of("operation", Map.copyOf(operation));
     }
 
     private Map<String, Object> normalizeSearchItem(String toolkit, JsonNode item) {

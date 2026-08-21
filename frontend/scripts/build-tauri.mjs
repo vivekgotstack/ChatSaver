@@ -18,7 +18,11 @@ await cp(join(frontendRoot, "src"), join(stagingRoot, "src"), {
 });
 const desktopPublicAssets = new Set([
   "/public/art",
+  "/public/apple-touch-icon.png",
   "/public/cs-transparent.png",
+  "/public/icon-192.png",
+  "/public/icon-512.png",
+  "/public/icon-maskable-512.png",
   "/public/icon.svg",
 ]);
 await cp(join(frontendRoot, "public"), join(stagingRoot, "public"), {

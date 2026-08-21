@@ -1,8 +1,11 @@
-const CACHE_NAME = "chatsaver-shell-v8";
+const CACHE_NAME = "chatsaver-shell-v9";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
   "/cs-transparent.png",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/icon-maskable-512.png",
   "/icon.svg",
   "/art/crimson-canvas.webp",
 ];
