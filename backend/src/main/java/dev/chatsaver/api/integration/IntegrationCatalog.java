@@ -13,55 +13,64 @@ import dev.chatsaver.api.integration.IntegrationModels.IntegrationDefinition;
 @Component
 public class IntegrationCatalog {
 
-    private static final IntegrationAction GITHUB_PROFILE = new IntegrationAction(
-            "verify-profile",
-            "Verify connection",
-            "Read your public GitHub profile to confirm this connection.",
-            true);
+    private static IntegrationAction action(String id, String label, String description) {
+        return new IntegrationAction(id, label, description, true);
+    }
 
     private static final List<IntegrationDefinition> DEFINITIONS = List.of(
             definition(
                     "googledrive",
                     "Google Drive",
                     "Storage",
-                    "Bring approved Drive workflows into your private workspace.",
-                    List.of("Managed OAuth", "Connection management"),
-                    List.of()),
+                    "Find selected Docs and files, then import them as editable knowledge notes.",
+                    List.of("Managed OAuth", "File search", "Read-only import"),
+                    List.of(
+                            action("drive-search", "Find files", "Search files you can access."),
+                            action("drive-import", "Import file", "Import one selected file as a note."))),
             definition(
                     "gmail",
                     "Gmail",
                     "Communication",
-                    "Connect email securely for future, explicitly approved workflows.",
-                    List.of("Managed OAuth", "Connection management"),
-                    List.of()),
+                    "Find a useful email or thread and preserve it as an editable knowledge note.",
+                    List.of("Managed OAuth", "Email search", "Read-only import"),
+                    List.of(
+                            action("gmail-search", "Find email", "Search your mailbox."),
+                            action("gmail-import-message", "Save email", "Save one selected email."),
+                            action("gmail-import-thread", "Save thread", "Save one selected email thread."))),
             definition(
                     "github",
                     "GitHub",
                     "Developer tools",
-                    "Verify your GitHub identity with a harmless read-only request.",
-                    List.of("Managed OAuth", "Read-only identity check"),
-                    List.of(GITHUB_PROFILE)),
+                    "Import a repository README, issue, pull request, or discussion from its URL.",
+                    List.of("Managed OAuth", "URL import", "Read-only access"),
+                    List.of(action("github-import", "Import from GitHub", "Import one supported GitHub URL."))),
             definition(
                     "notion",
                     "Notion",
                     "Knowledge",
-                    "Prepare a secure bridge between selected Notion content and ChatSaver.",
-                    List.of("Managed OAuth", "Connection management"),
-                    List.of()),
+                    "Find an authorized page and import it as editable Markdown in ChatSaver.",
+                    List.of("Managed OAuth", "Page search", "Read-only import"),
+                    List.of(
+                            action("notion-search", "Find pages", "Search authorized Notion pages."),
+                            action("notion-import", "Import page", "Import one selected page."))),
             definition(
                     "slack",
                     "Slack",
                     "Communication",
-                    "Connect a Slack workspace without exposing workspace credentials.",
-                    List.of("Managed OAuth", "Connection management"),
-                    List.of()),
+                    "Find a useful message and save its conversation thread as a knowledge note.",
+                    List.of("Managed OAuth", "Message search", "Read-only thread import"),
+                    List.of(
+                            action("slack-search", "Find messages", "Search messages you can access."),
+                            action("slack-import-thread", "Save thread", "Save the selected Slack thread."))),
             definition(
-                    "dropbox",
-                    "Dropbox",
-                    "Storage",
-                    "Prepare Dropbox for approved file workflows while credentials stay isolated.",
-                    List.of("Managed OAuth", "Connection management"),
-                    List.of()));
+                    "linkedin",
+                    "LinkedIn",
+                    "Professional",
+                    "Preserve your professional profile or a selected LinkedIn post as editable knowledge.",
+                    List.of("Managed OAuth", "Profile snapshot", "Read-only post import"),
+                    List.of(
+                            action("linkedin-import-profile", "Save my profile", "Save your connected profile as a note."),
+                            action("linkedin-import-post", "Import post", "Import one selected LinkedIn post."))));
 
     private static final Map<String, IntegrationDefinition> BY_SLUG = DEFINITIONS.stream()
             .collect(java.util.stream.Collectors.toUnmodifiableMap(

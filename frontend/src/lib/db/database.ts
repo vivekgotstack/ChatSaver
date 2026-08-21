@@ -520,6 +520,40 @@ export async function createBlankNote(format: ManualNoteFormat): Promise<string>
   return note.id;
 }
 
+export async function createMarkdownNote(title: string, content: string): Promise<string> {
+  const timestamp = now();
+  const safeTitle = toPlainText(title).trim().slice(0, 160) || "Imported note";
+  const note: Note = {
+    id: makeId(),
+    title: safeTitle,
+    source: "markdown",
+    isFavorite: false,
+    isArchived: false,
+    blockCount: 1,
+    searchText: normalizeSearchText(safeTitle, content),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    syncStatus: "pending",
+  };
+  const block: NoteBlock = {
+    id: makeId(),
+    noteId: note.id,
+    position: 0,
+    question: "",
+    answer: content,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    syncStatus: "pending",
+  };
+
+  await db.transaction("rw", [db.notes, db.noteBlocks, db.outbox], async () => {
+    await db.notes.add(note);
+    await db.noteBlocks.add(block);
+    await db.outbox.bulkAdd([queueCreate("note", note), queueCreate("noteBlock", block)]);
+  });
+  return note.id;
+}
+
 export async function addNoteBlock(noteId: string): Promise<string | undefined> {
   return db.transaction("rw", [db.notes, db.noteBlocks, db.outbox], async () => {
     const note = await db.notes.get(noteId);
