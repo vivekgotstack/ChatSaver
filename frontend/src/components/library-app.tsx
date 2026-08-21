@@ -127,6 +127,7 @@ const DocumentToPdfDialog = dynamic(
 const PAGE_SIZE = 12;
 const FALLBACK_SYNC_INTERVAL_MS = 2 * 60 * 1_000;
 const ACCOUNT_SESSION_MARKER = "chatsaver:account-session";
+const ROUTE_NOTE_HANDOFF_KEY = "chatsaver:route-note-handoff";
 const EMPTY_PAGE: NotesPage = {
   items: [],
   page: 1,
@@ -613,7 +614,7 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
     { conversations: 0, imports: 0, pending: 0, pendingRevision: "" },
   );
 
-  const activeNoteId = selectedNoteId ?? notesPage.items[0]?.id;
+  const activeNoteId = selectedNoteId;
   const selectedNote = useLiveQuery(
     () => (activeNoteId ? db.notes.get(activeNoteId) : undefined),
     [vaultKey, activeNoteId],
@@ -656,6 +657,29 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
     setDatabaseState({ status: "loading" });
     setVaultKey(nextVaultKey);
   }
+
+  function replaceLibraryRoute(path: "/" | "/history", noteId?: string) {
+    try {
+      if (noteId) sessionStorage.setItem(ROUTE_NOTE_HANDOFF_KEY, noteId);
+      else sessionStorage.removeItem(ROUTE_NOTE_HANDOFF_KEY);
+    } catch {
+      // Route selection still degrades safely to an unselected dashboard.
+    }
+    if (isTauriRuntime()) window.location.replace(path === "/" ? "/" : "/history/");
+    else router.replace(path);
+  }
+
+  useEffect(() => {
+    if (!historyView || selectedNoteId) return;
+    try {
+      const noteId = sessionStorage.getItem(ROUTE_NOTE_HANDOFF_KEY);
+      if (!noteId) return;
+      sessionStorage.removeItem(ROUTE_NOTE_HANDOFF_KEY);
+      setSelectedNoteId(noteId);
+    } catch {
+      // A denied session store only means History opens without a selection.
+    }
+  }, [historyView, selectedNoteId, vaultKey]);
 
   useEffect(() => {
     let active = true;
@@ -714,9 +738,9 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
         return activateAccountVault(restored.user.id).then(({ databaseName }) => {
           if (!active) return;
           changeVault(databaseName);
-          setSelectedNoteId(undefined);
           setSession(restored);
           requestSync(restored, false);
+          if (!historyView) replaceLibraryRoute("/history");
         });
       })
       .catch(() => {
@@ -886,32 +910,39 @@ export function LibraryApp({ historyView = false }: { historyView?: boolean }) {
 
   async function authenticated(authenticatedSession: AuthSession) {
     try { localStorage.setItem(ACCOUNT_SESSION_MARKER, "1"); } catch { /* ignored */ }
-    const shouldOpenHistory = !historyView && await db.notes.count() === 0;
+    const intentionallyOpenNoteId = selectedNote?.id;
     const activation = await activateAccountVault(authenticatedSession.user.id, true);
     changeVault(activation.databaseName);
-    setSelectedNoteId(undefined);
+    setSelectedNoteId(intentionallyOpenNoteId);
     setSession(authenticatedSession);
     setIsAccountOpen(false);
-    if (shouldOpenHistory) {
-      if (isTauriRuntime()) window.location.replace("/history/");
-      else router.replace("/history");
-      return;
-    }
     if (activation.importedNotes > 0) {
       toast.success("Offline notes added to your account", {
         description: `${activation.importedNotes} local ${activation.importedNotes === 1 ? "note is" : "notes are"} safe and ready to sync.`,
       });
     }
     void runSync(authenticatedSession);
+    if (!historyView) replaceLibraryRoute("/history", intentionallyOpenNoteId);
   }
 
   function loggedOut() {
+    const intentionallyOpenNoteId = selectedNote?.id;
     try { localStorage.removeItem(ACCOUNT_SESSION_MARKER); } catch { /* ignored */ }
     changeVault(endAccountVault());
-    setSelectedNoteId(undefined);
     setSession(undefined);
     setSyncState("idle");
     setRealtimeState("offline");
+    void (async () => {
+      const guestNote = intentionallyOpenNoteId
+        ? await db.notes.get(intentionallyOpenNoteId)
+        : undefined;
+      setSelectedNoteId(guestNote?.id);
+      if (guestNote) {
+        if (!historyView) replaceLibraryRoute("/history", guestNote.id);
+      } else if (historyView) {
+        replaceLibraryRoute("/");
+      }
+    })();
   }
 
   function selectNote(noteId: string) {
