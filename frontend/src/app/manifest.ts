@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "ChatSaver",
     short_name: "ChatSaver",
-    description: "A private, flexible workspace for notes, ideas, and everything worth remembering.",
+    description: "Private notes, synced collections, an encrypted quick-save vault, connected workflows, and portable backups across every device.",
     id: "/",
     start_url: "/",
     scope: "/",
