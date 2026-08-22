@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 
 let fallbackTimer: number | undefined;
+const DASHBOARD_OVERRIDE_KEY = "chatsaver:dashboard-explicit";
 
 export function beginRouteTransition() {
   if (typeof document === "undefined" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -46,6 +47,13 @@ export function NavigationTransition() {
       if (!anchor || anchor.target || anchor.hasAttribute("download")) return;
       const target = new URL(anchor.href, window.location.href);
       if (target.origin !== window.location.origin) return;
+      if (target.pathname === "/") {
+        try {
+          sessionStorage.setItem(DASHBOARD_OVERRIDE_KEY, "1");
+        } catch {
+          // Home navigation still works when browser storage is unavailable.
+        }
+      }
       if (target.pathname === window.location.pathname && target.search === window.location.search) return;
       beginRouteTransition();
     }
