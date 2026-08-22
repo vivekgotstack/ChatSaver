@@ -1672,8 +1672,14 @@ export function LibraryApp({
 
       <div className="app-surface relative z-10 flex h-dvh min-h-0 flex-col overflow-hidden border-white/8 lg:h-[calc(100dvh-1.5rem)] lg:rounded-[1.75rem] lg:border">
         <header className="flex h-16 shrink-0 items-center border-b border-white/8 bg-black/25 px-2 backdrop-blur-2xl sm:px-5">
-          {collectionRouteId && selectedNote ? (
-            <Button variant="outline" size="icon-lg" className="me-2" aria-label="Back to collection" onClick={() => setSelectedNoteId(undefined)}>
+          {selectedNote ? (
+            <Button
+              variant="outline"
+              size="icon-lg"
+              className="me-2"
+              aria-label={collectionRouteId ? "Back to collection" : "Back to chats"}
+              onClick={() => setSelectedNoteId(undefined)}
+            >
               <ArrowLeft />
             </Button>
           ) : collectionRouteId ? (

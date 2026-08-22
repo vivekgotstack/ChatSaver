@@ -11,10 +11,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://chatsaver.viveknigam.co.in"),
-  title: {
-    default: "ChatSaver — Your Private, Connected Knowledge Workspace",
-    template: "%s · ChatSaver",
-  },
+  title: "ChatSaver",
   description: "Capture notes and AI chats, organize synced collections, protect links in an encrypted Private Vault, and publish backups through connected tools.",
   applicationName: "ChatSaver",
   keywords: [
