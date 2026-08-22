@@ -85,6 +85,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -678,30 +679,50 @@ function LibrarySidebar({
         </Select>
       </div>
 
-      <div className="flex min-h-0 flex-1 items-start px-3 pb-4">
-        <button
-          type="button"
-          className="group w-full rounded-2xl border border-primary/20 bg-primary/[0.045] p-4 text-start transition-colors hover:border-primary/45 hover:bg-primary/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-          onClick={onBrowseAll}
-        >
-          <span className="flex items-center gap-3">
-            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/14 text-primary">
-              <MessageSquareText />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold text-foreground">Browse all chats</span>
-              <span className="mt-1 block text-[11px] leading-5 text-muted-foreground">
-                Open the full-height conversation drawer
+      <ScrollArea className="library-notes-scroll min-h-0 flex-1 overflow-hidden px-2">
+        <div className="space-y-1 px-1 pb-4">
+          {page.items.map((note) => (
+            <Button
+              variant="ghost"
+              className={`group h-auto w-full items-start justify-start gap-3 px-3 py-3 text-start ${
+                note.id === selectedNoteId
+                  ? "bg-primary/12 text-foreground hover:bg-primary/16"
+                  : "text-muted-foreground"
+              }`}
+              type="button"
+              key={note.id}
+              onClick={() => onSelect(note.id)}
+            >
+              <span className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg border ${note.id === selectedNoteId ? "border-primary/25 bg-primary/15 text-primary" : "border-white/8 bg-black/15"}`}>
+                {note.isFavorite ? <Star className="size-3.5 fill-current" /> : <BookOpenText className="size-3.5" />}
               </span>
-            </span>
-            <ChevronRight className="size-4 text-primary transition-transform group-hover:translate-x-0.5" />
-          </span>
-          <span className="mt-4 flex items-center justify-between border-t border-white/7 pt-3 font-mono text-[9px] uppercase tracking-wide text-muted-foreground">
-            <span>{page.totalItems} visible</span>
-            <span>No cramped list</span>
-          </span>
-        </button>
-      </div>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-medium text-foreground">{note.title}</span>
+                <span className="mt-1 flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-wide">
+                  {note.blockCount} block{note.blockCount === 1 ? "" : "s"}
+                  <span className="size-0.5 rounded-full bg-current opacity-50" />
+                  {note.source === "chatgpt" ? "Imported" : note.source === "markdown" ? "Markdown" : "Q&A"}
+                </span>
+              </span>
+              <ChevronRight className="mt-2 size-3.5 opacity-40" />
+            </Button>
+          ))}
+          {!page.items.length ? (
+            <div className="mx-2 mt-3 rounded-xl border border-dashed border-white/10 bg-black/10 px-4 py-7 text-center">
+              <FilePlus2 className="mx-auto mb-3 size-5 text-primary" />
+              <p className="text-xs text-muted-foreground">{query ? "Nothing matches that search." : "This view is empty."}</p>
+            </div>
+          ) : null}
+        </div>
+      </ScrollArea>
+
+      {page.totalPages > 1 ? (
+        <div className="flex shrink-0 items-center justify-between border-t border-white/7 px-3 py-2">
+          <Button variant="ghost" size="icon-sm" disabled={page.page <= 1} aria-label="Previous notes page" onClick={() => onPageChange(page.page - 1)}><ChevronLeft /></Button>
+          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">Page {page.page} of {page.totalPages}</span>
+          <Button variant="ghost" size="icon-sm" disabled={page.page >= page.totalPages} aria-label="Next notes page" onClick={() => onPageChange(page.page + 1)}><ChevronRight /></Button>
+        </div>
+      ) : null}
 
       <div className="shrink-0 border-t border-white/7 p-3">
         <div className="rounded-xl border border-white/7 bg-black/15 p-3">
@@ -1404,7 +1425,6 @@ export function LibraryApp({
     setCollectionId(undefined);
     setPage(1);
     setSelectedNoteId(undefined);
-    setIsMobileLibraryOpen(false);
   }
 
   const sidebarProps: LibrarySidebarProps = {
