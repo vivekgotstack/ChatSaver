@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Cloud, Database, FileDown, LockKeyhole, MonitorSmartphone, Plug, RefreshCw } from "lucide-react";
 import { isTauriRuntime } from "@/lib/platform-fetch";
+import { beginRouteTransition } from "@/components/navigation-transition";
 
 export type DesktopAction = "devices" | "sync" | "vault" | "private-vault" | "pdf" | "integrations";
 export const DESKTOP_ACTION_EVENT = "chatsaver:desktop-action";
@@ -57,6 +59,7 @@ const ACTIONS: Array<{
 ];
 
 export function DesktopContextMenu() {
+  const router = useRouter();
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ x: number; y: number }>();
 
@@ -108,7 +111,8 @@ export function DesktopContextMenu() {
       return;
     }
     if (action === "private-vault") {
-      window.location.assign("/private-vault/");
+      beginRouteTransition();
+      router.push("/private-vault");
       return;
     }
     window.dispatchEvent(new CustomEvent<DesktopAction>(DESKTOP_ACTION_EVENT, { detail: action }));

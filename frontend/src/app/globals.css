@@ -98,6 +98,58 @@
   }
 }
 
+@view-transition {
+  navigation: auto;
+}
+
+::view-transition-old(root) {
+  animation: route-view-out 140ms ease-in both;
+}
+
+::view-transition-new(root) {
+  animation: route-view-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+#route-frame {
+  min-height: 100dvh;
+  transition: opacity 180ms ease;
+}
+
+.route-transition-curtain {
+  position: fixed;
+  z-index: 9998;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(circle at 50% 38%, rgb(25 9 13 / 24%), rgb(5 5 5 / 76%));
+  transition: opacity 220ms ease;
+}
+
+html[data-navigation-state="leaving"] #route-frame {
+  opacity: 0.88;
+}
+
+html[data-navigation-state="leaving"] .route-transition-curtain {
+  opacity: 0.22;
+}
+
+html[data-navigation-state="entering"] #route-frame {
+  animation: route-frame-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes route-frame-in {
+  from { opacity: 0.88; }
+  to { opacity: 1; }
+}
+
+@keyframes route-view-out {
+  to { opacity: 0.84; transform: scale(0.998); }
+}
+
+@keyframes route-view-in {
+  from { opacity: 0; transform: translateY(3px) scale(0.998); }
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
@@ -390,6 +442,10 @@
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+
+  .route-transition-curtain {
+    display: none;
   }
 }
 

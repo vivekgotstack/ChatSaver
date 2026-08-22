@@ -139,6 +139,7 @@ import {
   type AuthSession,
 } from "@/lib/sync";
 import { isTauriRuntime } from "@/lib/platform-fetch";
+import { beginRouteTransition } from "@/components/navigation-transition";
 
 const ImportDialog = dynamic(
   () => import("@/components/import-dialog").then((module) => module.ImportDialog),
@@ -1076,8 +1077,14 @@ export function LibraryApp({
       if (action === "devices") setIsAccountOpen(true);
       if (action === "vault") setIsVaultOpen(true);
       if (action === "pdf") setIsPdfConverterOpen(true);
-      if (action === "integrations") window.location.assign("/integrations/");
-      if (action === "private-vault") window.location.assign("/private-vault/");
+      if (action === "integrations") {
+        beginRouteTransition();
+        router.push("/integrations");
+      }
+      if (action === "private-vault") {
+        beginRouteTransition();
+        router.push("/private-vault");
+      }
       if (action === "sync") {
         if (session) requestSync(session, true);
         else setIsAccountOpen(true);
@@ -1105,8 +1112,8 @@ export function LibraryApp({
     } catch {
       // Route selection still degrades safely to an unselected dashboard.
     }
-    if (isTauriRuntime()) window.location.replace(path === "/" ? "/" : "/history/");
-    else router.replace(path);
+    beginRouteTransition();
+    router.replace(path);
   }
 
   function markDashboardExplicit() {
@@ -1115,8 +1122,8 @@ export function LibraryApp({
 
   function openCollectionRoute(id: string) {
     const target = `/collections/?collection=${encodeURIComponent(id)}`;
-    if (isTauriRuntime()) window.location.assign(target);
-    else router.push(target);
+    beginRouteTransition();
+    router.push(target);
   }
 
   useEffect(() => {
@@ -1462,8 +1469,8 @@ export function LibraryApp({
     onBrowseAll: () => {
       setIsMobileLibraryOpen(false);
       if (!historyView) {
-        if (isTauriRuntime()) window.location.assign("/history/");
-        else router.push("/history");
+        beginRouteTransition();
+        router.push("/history");
       }
     },
   };
@@ -1599,8 +1606,8 @@ export function LibraryApp({
                 className="h-11 rounded-xl border-white/12 bg-black/18 px-5 text-sm text-white backdrop-blur-md hover:bg-black/32"
                 onClick={() => {
                   if (!session) return;
-                  if (isTauriRuntime()) window.location.assign("/history/");
-                  else router.push("/history");
+                  beginRouteTransition();
+                  router.push("/history");
                 }}
               >
                 <BookOpenText />

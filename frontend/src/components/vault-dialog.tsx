@@ -19,6 +19,7 @@ import {
 import { toast } from "sonner";
 import { clearLocalVault, createVaultBackup, db, restoreVaultBackup } from "@/lib/db/database";
 import { eraseSyncedVault } from "@/lib/sync";
+import { beginRouteTransition } from "@/components/navigation-transition";
 import { downloadVaultBackup } from "@/lib/portable";
 import { useLiveQuery } from "@/hooks/use-live-query";
 import { Badge } from "@/components/ui/badge";
@@ -122,6 +123,7 @@ export function VaultDialog({ open, onOpenChange, accessToken, vaultKey, onConve
       if (accessToken) await eraseSyncedVault(accessToken);
       await clearLocalVault();
       toast.success(accessToken ? "Vault permanently erased" : "Browser vault permanently erased");
+      beginRouteTransition();
       window.location.replace("/");
     } catch (error) {
       toast.error(accessToken ? "The account vault was not erased." : "The browser vault was not erased.", {

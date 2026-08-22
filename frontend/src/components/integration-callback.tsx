@@ -14,6 +14,7 @@ import {
   readPendingIntegration,
 } from "@/lib/integrations";
 import { refreshAccount, type AuthSession } from "@/lib/sync";
+import { beginRouteTransition } from "@/components/navigation-transition";
 
 const ACCOUNT_SESSION_MARKER = "chatsaver:account-session";
 
@@ -64,6 +65,7 @@ export function IntegrationCallback() {
           window.opener.focus();
           window.close();
         }
+        beginRouteTransition();
         router.replace("/integrations");
       }, 900);
     } catch (error) {
