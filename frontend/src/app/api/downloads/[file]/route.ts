@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const RELEASE = "0.2.7";
 const FILES = {
   "ChatSaver.exe": "application/vnd.microsoft.portable-executable",
   "ChatSaver.dmg": "application/x-apple-diskimage",
@@ -11,7 +10,7 @@ const FILES = {
 
 async function releaseAsset(file: string, method: "GET" | "HEAD") {
   return fetch(
-    `https://github.com/vivekgotstack/ChatSaver/releases/download/${RELEASE}/${file}`,
+    `https://github.com/vivekgotstack/ChatSaver/releases/latest/download/${file}`,
     { method, cache: "no-store" },
   );
 }
