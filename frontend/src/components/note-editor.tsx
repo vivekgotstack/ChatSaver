@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -25,11 +26,15 @@ import {
   LoaderCircle,
   List,
   ListOrdered,
+  Maximize2,
   MessageSquareText,
+  Minimize2,
+  Minus,
   MoreHorizontal,
   Pencil,
   Plus,
   Quote,
+  SlidersHorizontal,
   Sparkles,
   Star,
   Trash2,
@@ -91,6 +96,8 @@ interface NoteEditorProps {
   onArchived: () => void;
   onImport: () => void;
   onCreate: () => void;
+  focusMode?: boolean;
+  onFocusModeChange?: (focusMode: boolean) => void;
 }
 
 function NoteTitleEditor({ note }: { note: Note }) {
@@ -160,7 +167,7 @@ function MarkdownView({ content, empty }: { content: string; empty: string }) {
   }
 
   return (
-    <div className="min-w-0 text-[15px] leading-7 text-foreground/88 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+    <div className="note-prose min-w-0 leading-7 text-foreground/88 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -223,9 +230,16 @@ function CollapsibleMarkdown({ content, empty }: { content: string; empty: strin
   );
 }
 
-function PlainNoteEditor({ block }: { block: NoteBlock }) {
+function PlainNoteEditor({
+  block,
+  view,
+  onViewChange,
+}: {
+  block: NoteBlock;
+  view: "write" | "preview";
+  onViewChange: (view: "write" | "preview") => void;
+}) {
   const [content, setContent] = useState(block.answer);
-  const [view, setView] = useState<"write" | "preview">("write");
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -296,7 +310,7 @@ function PlainNoteEditor({ block }: { block: NoteBlock }) {
   ];
 
   return (
-    <Card className="overflow-hidden border-white/8 bg-card/72 py-0 shadow-xl shadow-black/10 backdrop-blur-xl">
+    <Card className="overflow-hidden border-white/8 bg-card/38 py-0 shadow-none backdrop-blur-sm">
       <CardContent className="p-0">
         <div className="flex flex-wrap items-center gap-2 border-b border-white/7 bg-black/15 px-3 py-2.5 sm:px-4">
           <div className="me-auto flex flex-wrap items-center gap-1">
@@ -311,14 +325,14 @@ function PlainNoteEditor({ block }: { block: NoteBlock }) {
             {saveState}
           </span>
           <div className="flex rounded-lg border border-white/8 bg-black/20 p-0.5">
-            <Button type="button" variant={view === "write" ? "secondary" : "ghost"} size="xs" onClick={() => setView("write")}><Pencil />Write</Button>
-            <Button type="button" variant={view === "preview" ? "secondary" : "ghost"} size="xs" onClick={() => setView("preview")}><Eye />Reading view</Button>
+            <Button type="button" variant={view === "write" ? "secondary" : "ghost"} size="xs" onClick={() => onViewChange("write")}><Pencil />Write</Button>
+            <Button type="button" variant={view === "preview" ? "secondary" : "ghost"} size="xs" onClick={() => onViewChange("preview")}><Eye />Reading view</Button>
           </div>
         </div>
         {view === "write" ? (
           <Textarea
             ref={textareaRef}
-            className="min-h-[55dvh] resize-y rounded-none border-0 bg-black/15 px-5 py-5 font-mono text-[14px] leading-7 shadow-inner shadow-black/10 focus-visible:ring-primary/30 sm:px-7 sm:py-6"
+            className="min-h-[62dvh] resize-none rounded-none border-0 bg-black/10 px-5 py-5 font-mono leading-7 shadow-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/30 sm:px-8 sm:py-8"
             aria-label="Markdown note content"
             placeholder={"Write naturally with Markdown…\n\n## A heading\n- A useful point\n- Another point\n\n```\ncode belongs here\n```"}
             value={content}
@@ -329,7 +343,7 @@ function PlainNoteEditor({ block }: { block: NoteBlock }) {
             onBlur={() => save(content, 0)}
           />
         ) : (
-          <article className="min-h-[55dvh] bg-black/10 px-5 py-6 sm:px-8 sm:py-8">
+          <article className="min-h-[62dvh] bg-black/8 px-5 py-7 sm:px-10 sm:py-10" aria-label="Reading view">
             <MarkdownView content={content} empty="Nothing written yet. Switch to Write to begin." />
           </article>
         )}
@@ -342,16 +356,17 @@ function QaBlockEditor({
   block,
   index,
   canDelete,
+  view,
+  onViewChange,
 }: {
   block: NoteBlock;
   index: number;
   canDelete: boolean;
+  view: "edit" | "preview";
+  onViewChange: (view: "edit" | "preview") => void;
 }) {
   const [question, setQuestion] = useState(block.question);
   const [answer, setAnswer] = useState(block.answer);
-  const [view, setView] = useState<"edit" | "preview">(() =>
-    block.question.trim() || block.answer.trim() ? "preview" : "edit"
-  );
   const [isEditing, setIsEditing] = useState(false);
   const [questionExpanded, setQuestionExpanded] = useState(false);
   const [answerExpanded, setAnswerExpanded] = useState(false);
@@ -405,7 +420,7 @@ function QaBlockEditor({
             variant="ghost"
             size="sm"
             className="h-8 gap-1.5 text-[10px] text-muted-foreground"
-            onClick={() => setView((current) => current === "edit" ? "preview" : "edit")}
+            onClick={() => onViewChange(view === "edit" ? "preview" : "edit")}
           >
             {view === "edit" ? <Eye /> : <Pencil />}
             {view === "edit" ? "Preview" : "Edit"}
@@ -553,7 +568,17 @@ function QaBlockEditor({
 
 const IMPORTED_BLOCK_BATCH = 5;
 
-function QaBlocksList({ blocks, lazy }: { blocks: NoteBlock[]; lazy: boolean }) {
+function QaBlocksList({
+  blocks,
+  lazy,
+  view,
+  onViewChange,
+}: {
+  blocks: NoteBlock[];
+  lazy: boolean;
+  view: "edit" | "preview";
+  onViewChange: (view: "edit" | "preview") => void;
+}) {
   const [visibleCount, setVisibleCount] = useState(IMPORTED_BLOCK_BATCH);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const renderedBlocks = lazy ? blocks.slice(0, visibleCount) : blocks;
@@ -581,6 +606,8 @@ function QaBlocksList({ blocks, lazy }: { blocks: NoteBlock[]; lazy: boolean }) 
             block={block}
             index={index}
             canDelete={blocks.length > 1}
+            view={view}
+            onViewChange={onViewChange}
             key={block.id}
           />
         ))}
@@ -690,12 +717,39 @@ export function NoteEditor({
   onArchived,
   onImport,
   onCreate,
+  focusMode = false,
+  onFocusModeChange,
 }: NoteEditorProps) {
+  const [viewMode, setViewMode] = useState<"read" | "edit">("read");
+  const [readerWidth, setReaderWidth] = useState<"focused" | "comfortable" | "wide">("comfortable");
+  const [fontSize, setFontSize] = useState(16);
+  const initializedNote = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!note || blocks.length === 0 || initializedNote.current === note.id) return;
+    initializedNote.current = note.id;
+    const hasContent = blocks.some((block) => block.question.trim() || block.answer.trim());
+    setViewMode(hasContent ? "read" : "edit");
+  }, [blocks, note]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "e") {
+        event.preventDefault();
+        setViewMode((current) => current === "read" ? "edit" : "read");
+      }
+      if (event.key === "Escape" && focusMode) onFocusModeChange?.(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [focusMode, onFocusModeChange]);
+
   if (!note) {
     return <EmptyEditor historyView={emptyView === "history"} onImport={onImport} onCreate={onCreate} />;
   }
   const activeNote = note;
   const markdownBlock = note.source === "markdown" ? blocks[0] : undefined;
+  const documentWidth = readerWidth === "focused" ? "max-w-3xl" : readerWidth === "wide" ? "max-w-[92rem]" : "max-w-6xl";
 
   async function copyText() {
     try {
@@ -714,9 +768,9 @@ export function NoteEditor({
   }
 
   return (
-    <main className="editor-scrollbar min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-7 sm:py-8 lg:px-10 lg:py-10">
-        <header className="mb-7">
+    <main className="editor-scrollbar note-document min-h-0 flex-1 overflow-y-auto bg-black/10" style={{ "--note-font-size": `${fontSize}px` } as CSSProperties}>
+      <div className={`mx-auto w-full ${documentWidth} px-4 py-5 sm:px-7 sm:py-7 lg:px-10 lg:py-8`}>
+        <header className="mb-6">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0 flex-1">
               <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -751,7 +805,44 @@ export function NoteEditor({
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <div className="me-1 flex rounded-lg border border-white/8 bg-black/20 p-0.5" aria-label="Note mode">
+                <Button type="button" variant={viewMode === "read" ? "secondary" : "ghost"} size="sm" onClick={() => setViewMode("read")}><Eye /> Read</Button>
+                <Button type="button" variant={viewMode === "edit" ? "secondary" : "ghost"} size="sm" onClick={() => setViewMode("edit")}><Pencil /> Edit</Button>
+              </div>
+
+              <DropdownMenu>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="icon-lg" aria-label="Reading appearance"><SlidersHorizontal /></Button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>Reading appearance</TooltipContent>
+                </Tooltip>
+                <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuLabel>Page width</DropdownMenuLabel>
+                  <DropdownMenuItem onSelect={() => setReaderWidth("focused")}><Check className={readerWidth === "focused" ? "opacity-100" : "opacity-0"} /> Focused</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setReaderWidth("comfortable")}><Check className={readerWidth === "comfortable" ? "opacity-100" : "opacity-0"} /> Comfortable</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setReaderWidth("wide")}><Check className={readerWidth === "wide" ? "opacity-100" : "opacity-0"} /> Wide</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Text size · {fontSize}px</DropdownMenuLabel>
+                  <DropdownMenuItem disabled={fontSize <= 13} onSelect={() => setFontSize((size) => Math.max(13, size - 1))}><Minus /> Smaller</DropdownMenuItem>
+                  <DropdownMenuItem disabled={fontSize >= 22} onSelect={() => setFontSize((size) => Math.min(22, size + 1))}><Plus /> Larger</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {onFocusModeChange ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" size="icon-lg" aria-label={focusMode ? "Exit focus mode" : "Open focus mode"} onClick={() => onFocusModeChange(!focusMode)}>
+                      {focusMode ? <Minimize2 /> : <Maximize2 />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{focusMode ? "Exit focus mode · Esc" : "Focus mode"}</TooltipContent>
+                </Tooltip>
+              ) : null}
+
               <DropdownMenu>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -871,10 +962,21 @@ export function NoteEditor({
         <Separator className="mb-7 bg-white/8" />
 
         {markdownBlock ? (
-          <PlainNoteEditor block={markdownBlock} key={markdownBlock.id} />
+          <PlainNoteEditor
+            block={markdownBlock}
+            view={viewMode === "read" ? "preview" : "write"}
+            onViewChange={(view) => setViewMode(view === "preview" ? "read" : "edit")}
+            key={markdownBlock.id}
+          />
         ) : (
           <>
-            <QaBlocksList blocks={blocks} lazy={note.source === "chatgpt"} key={note.id} />
+            <QaBlocksList
+              blocks={blocks}
+              lazy={note.source === "chatgpt"}
+              view={viewMode === "read" ? "preview" : "edit"}
+              onViewChange={(view) => setViewMode(view === "preview" ? "read" : "edit")}
+              key={note.id}
+            />
 
             <Button
               variant="outline"

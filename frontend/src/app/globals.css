@@ -463,3 +463,23 @@ html[data-navigation-state="entering"] #route-frame {
 .library-collections-scroll::-webkit-scrollbar {
   display: none;
 }
+
+.note-document {
+  --note-font-size: 16px;
+  background:
+    linear-gradient(90deg, transparent, rgb(255 255 255 / 1.5%) 50%, transparent),
+    rgb(7 6 7 / 28%);
+}
+
+.note-document .note-prose,
+.note-document textarea {
+  font-size: var(--note-font-size);
+}
+
+.note-document .note-prose {
+  line-height: 1.78;
+}
+
+.note-document textarea {
+  tab-size: 2;
+}

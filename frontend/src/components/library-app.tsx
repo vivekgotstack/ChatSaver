@@ -504,42 +504,134 @@ function LibrarySidebar({
 }: LibrarySidebarProps) {
   if (laptop) {
     return (
-      <div className="sidebar-surface flex h-full min-h-0 flex-col overflow-hidden">
-        <div className="shrink-0 p-4 pb-3">
-          <button
-            type="button"
-            className="group w-full rounded-2xl border border-primary/25 bg-primary/[0.065] p-4 text-start shadow-[0_18px_50px_rgba(0,0,0,.18)] transition-colors hover:border-primary/50 hover:bg-primary/[0.1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-            onClick={onBrowseAll}
-          >
-            <span className="flex items-center gap-3">
-              <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/16 text-primary"><MessageSquareText /></span>
-              <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-foreground">All chats</span><span className="mt-1 block text-[11px] leading-5 text-muted-foreground">Open the spacious conversation drawer</span></span>
-              <ChevronRight className="size-4 text-primary transition-transform group-hover:translate-x-0.5" />
-            </span>
-            <span className="mt-4 flex items-center justify-between border-t border-white/8 pt-3 font-mono text-[9px] uppercase tracking-wide text-muted-foreground"><span>{counts.all} conversations</span><span>Browse & search</span></span>
-          </button>
+      <div className="sidebar-surface flex h-full min-h-0 flex-col overflow-hidden select-none">
+        <div className="flex h-12 shrink-0 items-center gap-1 border-b border-white/7 px-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-semibold tracking-[-0.01em]">ChatSaver Vault</p>
+            <p className="font-mono text-[8px] uppercase tracking-[0.16em] text-muted-foreground">File explorer</p>
+          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label="New collection" onClick={() => onEditCollection()}><FolderPlus /></Button>
+            </TooltipTrigger>
+            <TooltipContent>New folder</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label="New note" onClick={onCreate}><FilePlus2 /></Button>
+            </TooltipTrigger>
+            <TooltipContent>New note</TooltipContent>
+          </Tooltip>
         </div>
 
-        <section className="min-h-0 flex-1 px-3 py-3" aria-label="Collections">
-          <div className="mb-2 flex items-center justify-between px-2">
-            <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.17em] text-muted-foreground">Collections</p>
-            <Button variant="ghost" size="icon-sm" aria-label="Create collection" onClick={() => onEditCollection()}><FolderPlus /></Button>
-          </div>
-          <div className="h-full max-h-[calc(100%-2rem)] space-y-1 overflow-y-auto pe-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="shrink-0 px-3 py-3">
+          <label className="relative block">
+            <Search className="pointer-events-none absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              className="h-8 border-white/8 bg-black/20 ps-8 pe-10 text-xs shadow-none"
+              type="search"
+              placeholder="Search files"
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+            />
+            <span className="pointer-events-none absolute end-2 top-1/2 -translate-y-1/2 font-mono text-[8px] text-muted-foreground">⌘ K</span>
+          </label>
+        </div>
+
+        <ScrollArea className="library-notes-scroll min-h-0 flex-1 overflow-hidden px-2">
+          <div className="pb-3">
+            <div className="mb-1 flex items-center justify-between px-2 py-1">
+              <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Folders</p>
+              <span className="font-mono text-[8px] text-muted-foreground">{collections.length}</span>
+            </div>
+
+            <Button
+              variant={!collectionId && filter === "all" ? "secondary" : "ghost"}
+              className="h-8 w-full justify-start gap-2 px-2 text-xs"
+              onClick={onBrowseAll}
+            >
+              <FolderHeart className="size-3.5 text-primary" />
+              All notes
+              <span className="ms-auto font-mono text-[9px] text-muted-foreground">{counts.all}</span>
+            </Button>
             {collections.map((collection) => (
-              <div className="group flex items-center" key={collection.id}>
-                <Button variant={collectionId === collection.id ? "secondary" : "ghost"} className={`h-10 min-w-0 flex-1 justify-start ${collectionId === collection.id ? "" : "text-muted-foreground"}`} onClick={() => onCollectionChange(collection.id)}>
-                  <Folder /><span className="truncate">{collection.name}</span><span className="ms-auto font-mono text-[10px] text-muted-foreground">{collection.noteCount}</span>
+              <div className="group/folder flex items-center" key={collection.id}>
+                <Button
+                  variant={collectionId === collection.id ? "secondary" : "ghost"}
+                  className="h-8 min-w-0 flex-1 justify-start gap-2 px-2 text-xs font-normal"
+                  onClick={() => onCollectionChange(collection.id)}
+                >
+                  <Folder className={`size-3.5 ${collectionId === collection.id ? "fill-primary/20 text-primary" : "text-muted-foreground"}`} />
+                  <span className="truncate">{collection.name}</span>
+                  <span className="ms-auto font-mono text-[9px] text-muted-foreground">{collection.noteCount}</span>
                 </Button>
-                <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={`Manage ${collection.name}`}><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-40"><DropdownMenuItem onSelect={() => onEditCollection(collection)}><Pencil /> Rename</DropdownMenuItem><DropdownMenuItem variant="destructive" onSelect={() => onDeleteCollection(collection)}><Trash2 /> Delete</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button className="size-7 opacity-0 group-hover/folder:opacity-100" variant="ghost" size="icon-sm" aria-label={`Manage ${collection.name}`}><MoreHorizontal /></Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-40">
+                    <DropdownMenuItem onSelect={() => onEditCollection(collection)}><Pencil /> Rename</DropdownMenuItem>
+                    <DropdownMenuItem variant="destructive" onSelect={() => onDeleteCollection(collection)}><Trash2 /> Delete</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             ))}
-            {!collections.length ? <button type="button" className="w-full rounded-xl border border-dashed border-white/10 px-3 py-4 text-start text-[11px] leading-5 text-muted-foreground transition-colors hover:border-primary/25 hover:text-foreground" onClick={() => onEditCollection()}>+ Organize notes into a collection</button> : null}
-          </div>
-        </section>
+            {!collections.length ? (
+              <button type="button" className="mx-2 my-2 text-start text-[11px] text-muted-foreground hover:text-foreground" onClick={() => onEditCollection()}>+ New folder</button>
+            ) : null}
 
-        <div className="shrink-0 border-t border-white/7 p-3">
-          <div className="rounded-xl border border-white/8 bg-black/20 p-3"><div className="flex items-center gap-2.5"><span className="grid size-9 place-items-center rounded-lg bg-primary/12 text-primary"><Database className="size-4" /></span><div className="min-w-0 flex-1"><p className="text-xs font-medium">Local vault</p><p className="font-mono text-[9px] uppercase tracking-wide text-muted-foreground">{stats.conversations} chats · {stats.pending} queued</p></div><span className="size-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.65)]" /></div></div>
+            <Separator className="my-3 bg-white/7" />
+
+            <div className="mb-1 flex items-center justify-between gap-2 px-2 py-1">
+              <p className="truncate font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                {query ? "Search results" : collections.find((item) => item.id === collectionId)?.name ?? "Files"}
+              </p>
+              <Select value={sort} onValueChange={(value) => onSortChange(value as NoteSort)}>
+                <SelectTrigger size="sm" className="h-6 w-20 border-0 bg-transparent px-1.5 text-[9px] shadow-none" aria-label="Sort files"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="updated-desc">Newest</SelectItem>
+                  <SelectItem value="updated-asc">Oldest</SelectItem>
+                  <SelectItem value="title-asc">A–Z</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-0.5">
+              {page.items.map((note) => (
+                <Button
+                  variant="ghost"
+                  className={`h-8 w-full justify-start gap-2 px-2 text-xs font-normal ${note.id === selectedNoteId ? "bg-primary/14 text-foreground hover:bg-primary/18" : "text-muted-foreground"}`}
+                  type="button"
+                  key={note.id}
+                  onClick={() => onSelect(note.id)}
+                  title={note.title}
+                >
+                  <FileText className={`size-3.5 ${note.id === selectedNoteId ? "text-primary" : "text-muted-foreground/70"}`} />
+                  <span className="truncate">{note.title}</span>
+                  {note.isFavorite ? <Star className="ms-auto size-3 fill-primary text-primary" /> : null}
+                </Button>
+              ))}
+              {!page.items.length ? (
+                <div className="px-3 py-6 text-center text-[11px] text-muted-foreground">
+                  {query ? "No matching files" : "This folder is empty"}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </ScrollArea>
+
+        {page.totalPages > 1 ? (
+          <div className="flex shrink-0 items-center justify-between border-t border-white/7 px-2 py-1.5">
+            <Button variant="ghost" size="icon-sm" disabled={page.page <= 1} aria-label="Previous files page" onClick={() => onPageChange(page.page - 1)}><ChevronLeft /></Button>
+            <span className="font-mono text-[8px] text-muted-foreground">{page.page} / {page.totalPages}</span>
+            <Button variant="ghost" size="icon-sm" disabled={page.page >= page.totalPages} aria-label="Next files page" onClick={() => onPageChange(page.page + 1)}><ChevronRight /></Button>
+          </div>
+        ) : null}
+
+        <div className="flex h-8 shrink-0 items-center gap-2 border-t border-white/7 px-3 font-mono text-[8px] uppercase tracking-wide text-muted-foreground">
+          <span className="size-1.5 rounded-full bg-emerald-400" />
+          Local vault
+          <span className="ms-auto">{stats.pending ? `${stats.pending} queued` : "Saved"}</span>
         </div>
       </div>
     );
@@ -685,7 +777,7 @@ function LibrarySidebar({
           {page.items.map((note) => (
             <Button
               variant="ghost"
-              className={`group h-auto w-full items-start justify-start gap-3 px-3 py-3 text-start ${
+              className={`group h-9 w-full justify-start gap-2 px-2.5 text-start text-xs font-normal ${
                 note.id === selectedNoteId
                   ? "bg-primary/12 text-foreground hover:bg-primary/16"
                   : "text-muted-foreground"
@@ -694,18 +786,9 @@ function LibrarySidebar({
               key={note.id}
               onClick={() => onSelect(note.id)}
             >
-              <span className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg border ${note.id === selectedNoteId ? "border-primary/25 bg-primary/15 text-primary" : "border-white/8 bg-black/15"}`}>
-                {note.isFavorite ? <Star className="size-3.5 fill-current" /> : <BookOpenText className="size-3.5" />}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-medium text-foreground">{note.title}</span>
-                <span className="mt-1 flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-wide">
-                  {note.blockCount} block{note.blockCount === 1 ? "" : "s"}
-                  <span className="size-0.5 rounded-full bg-current opacity-50" />
-                  {note.source === "chatgpt" ? "Imported" : note.source === "markdown" ? "Markdown" : "Q&A"}
-                </span>
-              </span>
-              <ChevronRight className="mt-2 size-3.5 opacity-40" />
+              <FileText className={`size-3.5 ${note.id === selectedNoteId ? "text-primary" : "text-muted-foreground/70"}`} />
+              <span className="min-w-0 flex-1 truncate text-foreground">{note.title}</span>
+              {note.isFavorite ? <Star className="size-3 fill-primary text-primary" /> : null}
             </Button>
           ))}
           {!page.items.length ? (
@@ -976,6 +1059,7 @@ export function LibraryApp({
   const [deletingCollection, setDeletingCollection] = useState<NoteCollection>();
   const [isChatBrowserOpen, setIsChatBrowserOpen] = useState(false);
   const [isMobileLibraryOpen, setIsMobileLibraryOpen] = useState(false);
+  const [isFocusMode, setIsFocusMode] = useState(false);
   const [session, setSession] = useState<AuthSession>();
   const [vaultKey, setVaultKey] = useState(() => db.name);
   const [databaseState, setDatabaseState] = useState<
@@ -1124,6 +1208,15 @@ export function LibraryApp({
     const target = `/collections/?collection=${encodeURIComponent(id)}`;
     beginRouteTransition();
     router.push(target);
+  }
+
+  function openAllNotes() {
+    if (collectionRouteId) {
+      beginRouteTransition();
+      router.push("/history");
+      return;
+    }
+    changeFilter("all");
   }
 
   useEffect(() => {
@@ -1407,6 +1500,7 @@ export function LibraryApp({
 
   function selectNote(noteId: string) {
     setSelectedNoteId(noteId);
+    setIsFocusMode(false);
     setIsMobileLibraryOpen(false);
     setIsCommandOpen(false);
   }
@@ -1462,7 +1556,7 @@ export function LibraryApp({
     },
     onSelect: selectNote,
     onCreate: () => void createNote(),
-    onBrowseAll: () => setIsChatBrowserOpen(true),
+    onBrowseAll: openAllNotes,
   };
   const mobileSidebarProps: LibrarySidebarProps = {
     ...sidebarProps,
@@ -1666,12 +1760,12 @@ export function LibraryApp({
   }
 
   return (
-    <div className="relative min-h-dvh overflow-hidden p-0 lg:p-3">
+    <div className={`relative min-h-dvh overflow-hidden ${isFocusMode ? "p-0" : "p-0 lg:p-3"}`}>
       <div className="paint-backdrop" aria-hidden="true" />
       <div className="oil-grain" aria-hidden="true" />
 
-      <div className="app-surface relative z-10 flex h-dvh min-h-0 flex-col overflow-hidden border-white/8 lg:h-[calc(100dvh-1.5rem)] lg:rounded-[1.75rem] lg:border">
-        <header className="flex h-16 shrink-0 items-center border-b border-white/8 bg-black/25 px-2 backdrop-blur-2xl sm:px-5">
+      <div className={`app-surface relative z-10 flex h-dvh min-h-0 flex-col overflow-hidden border-white/8 ${isFocusMode ? "" : "lg:h-[calc(100dvh-1.5rem)] lg:rounded-[1.75rem] lg:border"}`}>
+        {!isFocusMode ? <header className="flex h-16 shrink-0 items-center border-b border-white/8 bg-black/25 px-2 backdrop-blur-2xl sm:px-5">
           {selectedNote ? (
             <Button
               variant="outline"
@@ -1827,11 +1921,11 @@ export function LibraryApp({
               </Button>
             )}
           </div>
-        </header>
+        </header> : null}
 
         <div className="flex min-h-0 flex-1">
-          {!collectionRouteId ? (
-            <aside className="hidden min-h-0 w-[322px] shrink-0 overflow-hidden border-e border-white/8 lg:block">
+          {!isFocusMode ? (
+            <aside className="hidden min-h-0 w-[282px] shrink-0 overflow-hidden border-e border-white/8 lg:block">
               <LibrarySidebar {...sidebarProps} laptop />
             </aside>
           ) : null}
@@ -1859,7 +1953,7 @@ export function LibraryApp({
                 />
               </div>
               <div className="hidden min-h-0 flex-1 lg:flex">
-                <NoteEditor note={selectedNote} blocks={blocks} collections={collections} emptyView="history" onDeleted={() => setSelectedNoteId(undefined)} onArchived={() => setSelectedNoteId(undefined)} onImport={() => setIsImportOpen(true)} onCreate={() => void createNote()} />
+                <NoteEditor note={selectedNote} blocks={blocks} collections={collections} emptyView="history" focusMode={isFocusMode} onFocusModeChange={setIsFocusMode} onDeleted={() => setSelectedNoteId(undefined)} onArchived={() => setSelectedNoteId(undefined)} onImport={() => setIsImportOpen(true)} onCreate={() => void createNote()} />
               </div>
             </>
           ) : (
@@ -1868,6 +1962,8 @@ export function LibraryApp({
               blocks={blocks}
               collections={collections}
               emptyView={historyView ? "history" : "library"}
+              focusMode={isFocusMode}
+              onFocusModeChange={setIsFocusMode}
               onDeleted={() => {
                 setSelectedNoteId(undefined);
                 if (session) requestSync(session, false);
@@ -1882,7 +1978,7 @@ export function LibraryApp({
           )}
         </div>
 
-        <SiteFooter compact />
+        {!isFocusMode ? <SiteFooter compact /> : null}
       </div>
 
       <ChatBrowserDrawer
