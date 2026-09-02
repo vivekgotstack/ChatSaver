@@ -1,12 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Suspense } from "react";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DesktopContextMenu } from "@/components/desktop-context-menu";
-import { NavigationTransition } from "@/components/navigation-transition";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -73,7 +71,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body style={{ backgroundColor: "#050505" }}>
         <TooltipProvider>
           <div id="route-frame">{children}</div>
-          <Suspense fallback={null}><NavigationTransition /></Suspense>
           <DesktopContextMenu />
           <ServiceWorkerRegistration />
           <Toaster position="bottom-right" richColors closeButton />

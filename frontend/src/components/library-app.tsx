@@ -8,7 +8,6 @@ import { useDeferredValue, useEffect, useEffectEvent, useRef, useState } from "r
 import {
   AlertTriangle,
   Archive,
-  ArrowLeft,
   ArrowRight,
   BookOpenText,
   ChevronLeft,
@@ -25,9 +24,10 @@ import {
   FolderHeart,
   Import,
   LoaderCircle,
-  Menu,
   MessageSquareText,
   MoreHorizontal,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Plus,
   RotateCcw,
@@ -100,7 +100,6 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
 import {
   Tooltip,
@@ -154,11 +153,10 @@ const DocumentToPdfDialog = dynamic(
   { ssr: false },
 );
 
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 250;
 const FALLBACK_SYNC_INTERVAL_MS = 2 * 60 * 1_000;
 const ACCOUNT_SESSION_MARKER = "chatsaver:account-session";
-const ROUTE_NOTE_HANDOFF_KEY = "chatsaver:route-note-handoff";
-const DASHBOARD_OVERRIDE_KEY = "chatsaver:dashboard-explicit";
+const WORKSPACE_STATE_VERSION = 1;
 const EMPTY_PAGE: NotesPage = {
   items: [],
   page: 1,
@@ -167,10 +165,40 @@ const EMPTY_PAGE: NotesPage = {
   totalPages: 1,
 };
 
-function isLaptopWeb(): boolean {
-  if (typeof window === "undefined" || isTauriRuntime()) return false;
-  const mobileAgent = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-  return !mobileAgent && window.matchMedia("(min-width: 1024px) and (hover: hover) and (pointer: fine)").matches;
+interface StoredWorkspaceState {
+  version: number;
+  selectedNoteId?: string;
+  collectionId?: string;
+  filter: LibraryFilter;
+  sort: NoteSort;
+  sidebarOpen: boolean;
+}
+
+function workspaceStorageKey(vaultKey: string): string {
+  return `chatsaver:workspace:${vaultKey}`;
+}
+
+function readWorkspaceState(vaultKey: string): StoredWorkspaceState | undefined {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(workspaceStorageKey(vaultKey)) ?? "null") as Partial<StoredWorkspaceState> | null;
+    if (!parsed || parsed.version !== WORKSPACE_STATE_VERSION) return undefined;
+    const filter = ["all", "favorites", "imported", "archived"].includes(parsed.filter ?? "")
+      ? parsed.filter as LibraryFilter
+      : "all";
+    const sort = ["updated-desc", "updated-asc", "title-asc"].includes(parsed.sort ?? "")
+      ? parsed.sort as NoteSort
+      : "updated-desc";
+    return {
+      version: WORKSPACE_STATE_VERSION,
+      selectedNoteId: typeof parsed.selectedNoteId === "string" ? parsed.selectedNoteId : undefined,
+      collectionId: typeof parsed.collectionId === "string" ? parsed.collectionId : undefined,
+      filter,
+      sort,
+      sidebarOpen: parsed.sidebarOpen !== false,
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 type DesktopPlatform = "windows" | "macos";
@@ -1057,9 +1085,10 @@ export function LibraryApp({
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [collectionEditor, setCollectionEditor] = useState<NoteCollection | null | undefined>();
   const [deletingCollection, setDeletingCollection] = useState<NoteCollection>();
-  const [isChatBrowserOpen, setIsChatBrowserOpen] = useState(false);
   const [isMobileLibraryOpen, setIsMobileLibraryOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isFocusMode, setIsFocusMode] = useState(false);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
   const [session, setSession] = useState<AuthSession>();
   const [vaultKey, setVaultKey] = useState(() => db.name);
   const [databaseState, setDatabaseState] = useState<
@@ -1106,8 +1135,8 @@ export function LibraryApp({
     [vaultKey],
     [] as CollectionSummary[],
   );
-  const activeCollection = collectionRouteId
-    ? collections.find((item) => item.id === collectionRouteId)
+  const activeCollection = collectionId
+    ? collections.find((item) => item.id === collectionId)
     : undefined;
   const commandNotes = useLiveQuery(
     () => db.notes.orderBy("updatedAt").reverse().filter((note) => !note.isArchived).limit(50).toArray(),
@@ -1148,12 +1177,43 @@ export function LibraryApp({
   });
 
   useEffect(() => {
-    if (!collectionRouteId) return;
-    setCollectionId(collectionRouteId);
-    setFilter("all");
+    const stored = readWorkspaceState(vaultKey);
+    setSelectedNoteId(stored?.selectedNoteId);
+    setCollectionId(collectionRouteId ?? stored?.collectionId);
+    setFilter(collectionRouteId ? "all" : stored?.filter ?? "all");
+    setSort(stored?.sort ?? "updated-desc");
+    setIsSidebarOpen(stored?.sidebarOpen ?? true);
     setPage(1);
-    setSelectedNoteId(undefined);
-  }, [collectionRouteId]);
+    setWorkspaceReady(true);
+  }, [collectionRouteId, vaultKey]);
+
+  useEffect(() => {
+    if (!workspaceReady) return;
+    const state: StoredWorkspaceState = {
+      version: WORKSPACE_STATE_VERSION,
+      selectedNoteId,
+      collectionId,
+      filter,
+      sort,
+      sidebarOpen: isSidebarOpen,
+    };
+    try {
+      localStorage.setItem(workspaceStorageKey(vaultKey), JSON.stringify(state));
+    } catch {
+      // The workspace still functions if browser storage is unavailable.
+    }
+  }, [collectionId, filter, isSidebarOpen, selectedNoteId, sort, vaultKey, workspaceReady]);
+
+  useEffect(() => {
+    if (!workspaceReady || databaseState.status !== "ready" || !selectedNoteId) return;
+    let active = true;
+    void db.notes.get(selectedNoteId).then((note) => {
+      if (active && !note) setSelectedNoteId(undefined);
+    });
+    return () => {
+      active = false;
+    };
+  }, [databaseState.status, selectedNoteId, vaultKey, workspaceReady]);
 
   useEffect(() => {
     function handleDesktopAction(event: Event) {
@@ -1184,52 +1244,24 @@ export function LibraryApp({
     // dependency would not change, so the database effect could not run again.
     if (nextVaultKey === vaultKey) return;
     setDatabaseState({ status: "loading" });
-    setCollectionId(collectionRouteId);
+    setWorkspaceReady(false);
+    setCollectionId(undefined);
+    setSelectedNoteId(undefined);
     setFilter("all");
     setVaultKey(nextVaultKey);
   }
 
-  function replaceLibraryRoute(path: "/" | "/history", noteId?: string) {
-    try {
-      if (noteId) sessionStorage.setItem(ROUTE_NOTE_HANDOFF_KEY, noteId);
-      else sessionStorage.removeItem(ROUTE_NOTE_HANDOFF_KEY);
-    } catch {
-      // Route selection still degrades safely to an unselected dashboard.
-    }
-    beginRouteTransition();
-    router.replace(path);
-  }
-
-  function markDashboardExplicit() {
-    try { sessionStorage.setItem(DASHBOARD_OVERRIDE_KEY, "1"); } catch { /* route still opens */ }
-  }
-
   function openCollectionRoute(id: string) {
-    const target = `/collections/?collection=${encodeURIComponent(id)}`;
-    beginRouteTransition();
-    router.push(target);
+    setCollectionId(id);
+    setFilter("all");
+    setPage(1);
+    setSelectedNoteId(undefined);
+    setIsMobileLibraryOpen(false);
   }
 
   function openAllNotes() {
-    if (collectionRouteId) {
-      beginRouteTransition();
-      router.push("/history");
-      return;
-    }
     changeFilter("all");
   }
-
-  useEffect(() => {
-    if (!historyView || selectedNoteId) return;
-    try {
-      const noteId = sessionStorage.getItem(ROUTE_NOTE_HANDOFF_KEY);
-      if (!noteId) return;
-      sessionStorage.removeItem(ROUTE_NOTE_HANDOFF_KEY);
-      setSelectedNoteId(noteId);
-    } catch {
-      // A denied session store only means History opens without a selection.
-    }
-  }, [historyView, selectedNoteId, vaultKey]);
 
   useEffect(() => {
     let active = true;
@@ -1290,9 +1322,6 @@ export function LibraryApp({
           changeVault(databaseName);
           setSession(restored);
           requestSync(restored, false);
-          let dashboardExplicit = false;
-          try { dashboardExplicit = sessionStorage.getItem(DASHBOARD_OVERRIDE_KEY) === "1"; } catch { /* ignored */ }
-          if (!historyView && !dashboardExplicit && isLaptopWeb()) replaceLibraryRoute("/history");
         });
       })
       .catch(() => {
@@ -1474,8 +1503,6 @@ export function LibraryApp({
       });
     }
     void runSync(authenticatedSession);
-    try { sessionStorage.removeItem(DASHBOARD_OVERRIDE_KEY); } catch { /* ignored */ }
-    if (!historyView && isLaptopWeb()) replaceLibraryRoute("/history", intentionallyOpenNoteId);
   }
 
   function loggedOut() {
@@ -1490,11 +1517,6 @@ export function LibraryApp({
         ? await db.notes.get(intentionallyOpenNoteId)
         : undefined;
       setSelectedNoteId(guestNote?.id);
-      if (guestNote) {
-        if (!historyView) replaceLibraryRoute("/history", guestNote.id);
-      } else if (historyView) {
-        replaceLibraryRoute("/");
-      }
     })();
   }
 
@@ -1511,9 +1533,8 @@ export function LibraryApp({
 
   async function createNoteWithFormat(format: ManualNoteFormat) {
     const noteId = await createBlankNote(format);
-    if (collectionRouteId) await toggleNoteCollection(noteId, collectionRouteId);
+    if (collectionId) await toggleNoteCollection(noteId, collectionId);
     setFilter("all");
-    setCollectionId(collectionRouteId);
     setPage(1);
     setSelectedNoteId(noteId);
     setIsNewNoteOpen(false);
@@ -1526,6 +1547,14 @@ export function LibraryApp({
     setCollectionId(undefined);
     setPage(1);
     setSelectedNoteId(undefined);
+  }
+
+  function toggleSidebar() {
+    if (window.matchMedia("(max-width: 63.999rem)").matches) {
+      setIsMobileLibraryOpen(true);
+      return;
+    }
+    setIsSidebarOpen((open) => !open);
   }
 
   const sidebarProps: LibrarySidebarProps = {
@@ -1562,10 +1591,7 @@ export function LibraryApp({
     ...sidebarProps,
     onBrowseAll: () => {
       setIsMobileLibraryOpen(false);
-      if (!historyView) {
-        beginRouteTransition();
-        router.push("/history");
-      }
+      openAllNotes();
     },
   };
 
@@ -1582,7 +1608,7 @@ export function LibraryApp({
         <div className="first-run-vignette" aria-hidden="true" />
 
         <header className="relative z-10 flex h-20 items-center justify-between px-5 sm:px-8 lg:px-12">
-          <Link className="flex items-center gap-3" href="/" aria-label="ChatSaver home" onClick={markDashboardExplicit}>
+          <Link className="flex items-center gap-3" href="/" aria-label="ChatSaver home">
             <Image
               src="/cs-transparent.png"
               alt=""
@@ -1766,30 +1792,19 @@ export function LibraryApp({
 
       <div className={`app-surface relative z-10 flex h-dvh min-h-0 flex-col overflow-hidden border-white/8 ${isFocusMode ? "" : "lg:h-[calc(100dvh-1.5rem)] lg:rounded-[1.75rem] lg:border"}`}>
         {!isFocusMode ? <header className="flex h-16 shrink-0 items-center border-b border-white/8 bg-black/25 px-2 backdrop-blur-2xl sm:px-5">
-          {selectedNote ? (
-            <Button
-              variant="outline"
-              size="icon-lg"
-              className="me-2"
-              aria-label={collectionRouteId ? "Back to collection" : "Back to chats"}
-              onClick={() => setSelectedNoteId(undefined)}
-            >
-              <ArrowLeft />
-            </Button>
-          ) : collectionRouteId ? (
-            <Button asChild variant="outline" size="icon-lg" className="me-2" aria-label="Back to history">
-              <Link href="/history"><ArrowLeft /></Link>
-            </Button>
-          ) : (
-            <div className="me-2 lg:hidden">
-              <Sheet open={isMobileLibraryOpen} onOpenChange={setIsMobileLibraryOpen}>
-                <SheetTrigger asChild><Button variant="outline" size="icon-lg" className="lg:hidden" aria-label="Open library navigation"><Menu /></Button></SheetTrigger>
-                <SheetContent side="left" className="w-screen max-w-none border-e-white/10 p-0 sm:w-[390px]"><SheetHeader className="sr-only"><SheetTitle>Library navigation</SheetTitle><SheetDescription>Browse notes, filters, and collections.</SheetDescription></SheetHeader><LibrarySidebar {...mobileSidebarProps} /></SheetContent>
-              </Sheet>
-            </div>
-          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-lg" className="me-2" aria-label={isSidebarOpen ? "Close file sidebar" : "Open file sidebar"} onClick={toggleSidebar}>
+                {isSidebarOpen ? <PanelLeftClose /> : <PanelLeftOpen />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{isSidebarOpen ? "Close sidebar" : "Open sidebar"}</TooltipContent>
+          </Tooltip>
+          <Sheet open={isMobileLibraryOpen} onOpenChange={setIsMobileLibraryOpen}>
+            <SheetContent side="left" className="w-screen max-w-none border-e-white/10 p-0 sm:w-[390px]"><SheetHeader className="sr-only"><SheetTitle>File sidebar</SheetTitle><SheetDescription>Browse notes, filters, and collections.</SheetDescription></SheetHeader><LibrarySidebar {...mobileSidebarProps} /></SheetContent>
+          </Sheet>
 
-          <Link className="flex items-center gap-2.5" href="/" aria-label="ChatSaver home" onClick={markDashboardExplicit}>
+          <Link className="flex items-center gap-2.5" href="/" aria-label="ChatSaver home">
             <Image
               src="/cs-transparent.png"
               alt=""
@@ -1811,7 +1826,7 @@ export function LibraryApp({
           <Separator orientation="vertical" className="mx-5 hidden h-7 bg-white/8 lg:block" />
           <div className="hidden items-center gap-2 text-xs text-muted-foreground lg:flex">
             <BookOpenText className="size-3.5" />
-            {collectionRouteId ? activeCollection?.name ?? "Collection" : historyView ? "History" : FILTERS.find((item) => item.id === filter)?.label}
+            {activeCollection?.name ?? FILTERS.find((item) => item.id === filter)?.label ?? "All notes"}
             <ChevronRight className="size-3" />
             <span className="max-w-64 truncate text-foreground">
               {selectedNote?.title ?? "Overview"}
@@ -1924,70 +1939,34 @@ export function LibraryApp({
         </header> : null}
 
         <div className="flex min-h-0 flex-1">
-          {!isFocusMode ? (
+          {!isFocusMode && isSidebarOpen ? (
             <aside className="hidden min-h-0 w-[282px] shrink-0 overflow-hidden border-e border-white/8 lg:block">
               <LibrarySidebar {...sidebarProps} laptop />
             </aside>
           ) : null}
 
-          {collectionRouteId && !selectedNote ? (
-            <ResourceOverview
-              title={activeCollection?.name ?? "Collection"}
-              description={`${notesPage.totalItems} resource${notesPage.totalItems === 1 ? "" : "s"} organized in this collection.`}
-              page={notesPage}
-              collection={activeCollection}
-              onSelect={selectNote}
-              onCreate={() => void createNote()}
-              onPageChange={(nextPage) => { setPage(nextPage); setSelectedNoteId(undefined); }}
-            />
-          ) : !selectedNote && historyView && notesPage.items.length ? (
-            <>
-              <div className="flex min-h-0 flex-1 lg:hidden">
-                <ResourceOverview
-                  title={FILTERS.find((item) => item.id === filter)?.label ?? "All conversations"}
-                  description={query ? "Clear results from titles, questions, and saved answers." : "Every matching chat and note, clearly visible without opening the drawer."}
-                  page={notesPage}
-                  onSelect={selectNote}
-                  onCreate={() => void createNote()}
-                  onPageChange={(nextPage) => { setPage(nextPage); setSelectedNoteId(undefined); }}
-                />
-              </div>
-              <div className="hidden min-h-0 flex-1 lg:flex">
-                <NoteEditor note={selectedNote} blocks={blocks} collections={collections} emptyView="history" focusMode={isFocusMode} onFocusModeChange={setIsFocusMode} onDeleted={() => { setIsFocusMode(false); setSelectedNoteId(undefined); }} onArchived={() => { setIsFocusMode(false); setSelectedNoteId(undefined); }} onImport={() => setIsImportOpen(true)} onCreate={() => void createNote()} />
-              </div>
-            </>
-          ) : (
-            <NoteEditor
-              note={selectedNote}
-              blocks={blocks}
-              collections={collections}
-              emptyView={historyView ? "history" : "library"}
-              focusMode={isFocusMode}
-              onFocusModeChange={setIsFocusMode}
-              onDeleted={() => {
-                setIsFocusMode(false);
-                setSelectedNoteId(undefined);
-                if (session) requestSync(session, false);
-              }}
-              onArchived={() => {
-                setIsFocusMode(false);
-                setSelectedNoteId(undefined);
-                setPage(1);
-              }}
-              onImport={() => setIsImportOpen(true)}
-              onCreate={() => void createNote()}
-            />
-          )}
+          <NoteEditor
+            note={selectedNote}
+            blocks={blocks}
+            collections={collections}
+            emptyView={historyView ? "history" : "library"}
+            focusMode={isFocusMode}
+            onFocusModeChange={setIsFocusMode}
+            onDeleted={() => {
+              setIsFocusMode(false);
+              setSelectedNoteId(undefined);
+              if (session) requestSync(session, false);
+            }}
+            onArchived={() => {
+              setIsFocusMode(false);
+              setSelectedNoteId(undefined);
+              setPage(1);
+            }}
+            onImport={() => setIsImportOpen(true)}
+            onCreate={() => void createNote()}
+          />
         </div>
-
-        {!isFocusMode ? <SiteFooter compact /> : null}
       </div>
-
-      <ChatBrowserDrawer
-        {...sidebarProps}
-        open={isChatBrowserOpen}
-        onOpenChange={setIsChatBrowserOpen}
-      />
 
       {isImportOpen ? (
         <ImportDialog
@@ -1995,8 +1974,7 @@ export function LibraryApp({
           onImported={(noteId) => {
             if (noteId) {
               setFilter("all");
-              if (collectionRouteId) void toggleNoteCollection(noteId, collectionRouteId);
-              setCollectionId(collectionRouteId);
+              if (collectionId) void toggleNoteCollection(noteId, collectionId);
               setPage(1);
               setSelectedNoteId(noteId);
             }

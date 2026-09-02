@@ -23,8 +23,10 @@ import {
   Heading2,
   Heading3,
   Italic,
+  Link2,
   LoaderCircle,
   List,
+  ListChecks,
   ListOrdered,
   Maximize2,
   MessageSquareText,
@@ -37,6 +39,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Star,
+  Strikethrough,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -105,22 +108,51 @@ function NoteTitleEditor({ note }: { note: Note }) {
   const [isEditing, setIsEditing] = useState(false);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const latestTitle = useRef(note.title);
+  const queuedTitle = useRef(note.title);
 
   useEffect(() => {
-    if (!isEditing || !document.hasFocus()) setTitle(note.title);
+    if (!isEditing || !document.hasFocus()) {
+      setTitle(note.title);
+      latestTitle.current = note.title;
+      queuedTitle.current = note.title;
+    }
   }, [isEditing, note.title]);
+
+  async function persist(nextTitle: string) {
+    if (nextTitle === queuedTitle.current) return;
+    queuedTitle.current = nextTitle;
+    try {
+      await updateNoteTitle(note.id, nextTitle);
+      setSaveState("saved");
+    } catch {
+      setSaveState("error");
+    }
+  }
+
+  function flush() {
+    clearTimeout(saveTimer.current);
+    void persist(latestTitle.current);
+  }
+
+  useEffect(() => {
+    const flushWhenHidden = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", flushWhenHidden);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", flushWhenHidden);
+      flush();
+    };
+  }, [note.id]);
 
   function save(nextTitle: string, delay = 400) {
     clearTimeout(saveTimer.current);
+    latestTitle.current = nextTitle;
     setSaveState("saving");
-    saveTimer.current = setTimeout(async () => {
-      try {
-        await updateNoteTitle(note.id, nextTitle);
-        setSaveState("saved");
-      } catch {
-        setSaveState("error");
-      }
-    }, delay);
+    saveTimer.current = setTimeout(() => void persist(nextTitle), delay);
   }
 
   return (
@@ -136,7 +168,8 @@ function NoteTitleEditor({ note }: { note: Note }) {
         }}
         onBlur={(event) => {
           setIsEditing(false);
-          save(event.target.value, 0);
+          latestTitle.current = event.target.value;
+          flush();
         }}
       />
       <span
@@ -241,24 +274,51 @@ function PlainNoteEditor({
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const latestContent = useRef(block.answer);
+  const queuedContent = useRef(block.answer);
 
   useEffect(() => {
-    if (document.activeElement !== textareaRef.current) setContent(block.answer);
+    if (document.activeElement !== textareaRef.current) {
+      setContent(block.answer);
+      latestContent.current = block.answer;
+      queuedContent.current = block.answer;
+    }
   }, [block.answer]);
 
-  useEffect(() => () => clearTimeout(saveTimer.current), []);
+  async function persist(nextContent: string) {
+    if (nextContent === queuedContent.current) return;
+    queuedContent.current = nextContent;
+    try {
+      await updateNoteBlock(block.id, { question: "", answer: nextContent });
+      setSaveState("saved");
+    } catch {
+      setSaveState("error");
+    }
+  }
+
+  function flush() {
+    clearTimeout(saveTimer.current);
+    void persist(latestContent.current);
+  }
+
+  useEffect(() => {
+    const flushWhenHidden = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", flushWhenHidden);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", flushWhenHidden);
+      flush();
+    };
+  }, [block.id]);
 
   function save(nextContent: string, delay = 450) {
     clearTimeout(saveTimer.current);
+    latestContent.current = nextContent;
     setSaveState("saving");
-    saveTimer.current = setTimeout(async () => {
-      try {
-        await updateNoteBlock(block.id, { question: "", answer: nextContent });
-        setSaveState("saved");
-      } catch {
-        setSaveState("error");
-      }
-    }, delay);
+    saveTimer.current = setTimeout(() => void persist(nextContent), delay);
   }
 
   function replaceSelection(before: string, after = "", placeholder = "text") {
@@ -295,16 +355,34 @@ function PlainNoteEditor({
     });
   }
 
+  function insertText(text: string) {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const nextContent = `${content.slice(0, start)}${text}${content.slice(textarea.selectionEnd)}`;
+    setContent(nextContent);
+    save(nextContent);
+    window.requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + text.length, start + text.length);
+    });
+  }
+
   const tools = [
     { label: "Heading 1", icon: Heading1, action: () => prefixLines("# ") },
     { label: "Heading 2", icon: Heading2, action: () => prefixLines("## ") },
     { label: "Heading 3", icon: Heading3, action: () => prefixLines("### ") },
     { label: "Bold", icon: Bold, action: () => replaceSelection("**", "**") },
     { label: "Emphasis", icon: Italic, action: () => replaceSelection("*", "*") },
+    { label: "Strikethrough", icon: Strikethrough, action: () => replaceSelection("~~", "~~") },
     { label: "Bullet list", icon: List, action: () => prefixLines("- ") },
     { label: "Numbered list", icon: ListOrdered, action: () => prefixLines("1. ") },
+    { label: "Task list", icon: ListChecks, action: () => prefixLines("- [ ] ") },
     { label: "Quote", icon: Quote, action: () => prefixLines("> ") },
     { label: "Inline code", icon: Code2, action: () => replaceSelection("`", "`", "code") },
+    { label: "Code block", icon: Code2, action: () => replaceSelection("```\n", "\n```", "code") },
+    { label: "Link", icon: Link2, action: () => replaceSelection("[", "](https://)", "link text") },
+    { label: "Horizontal rule", icon: Minus, action: () => insertText("\n\n---\n\n") },
   ];
 
   return (
@@ -340,7 +418,7 @@ function PlainNoteEditor({
               setContent(event.target.value);
               save(event.target.value);
             }}
-            onBlur={() => save(content, 0)}
+            onBlur={flush}
           />
         ) : (
           <article className="min-h-[62dvh] bg-black/8 px-5 py-7 sm:px-10 sm:py-10" aria-label="Reading view">
@@ -370,6 +448,8 @@ function QaBlockEditor({
   const [answerExpanded, setAnswerExpanded] = useState(false);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const latestValues = useRef({ question: block.question, answer: block.answer });
+  const queuedValues = useRef(`${block.question}\u0000${block.answer}`);
   const questionId = `question-${block.id}`;
   const answerId = `answer-${block.id}`;
 
@@ -377,27 +457,47 @@ function QaBlockEditor({
     if (!isEditing || !document.hasFocus()) {
       setQuestion(block.question);
       setAnswer(block.answer);
+      latestValues.current = { question: block.question, answer: block.answer };
+      queuedValues.current = `${block.question}\u0000${block.answer}`;
     }
   }, [block.answer, block.question, isEditing]);
 
+  async function persist(nextQuestion: string, nextAnswer: string) {
+    const signature = `${nextQuestion}\u0000${nextAnswer}`;
+    if (signature === queuedValues.current) return;
+    queuedValues.current = signature;
+    try {
+      await updateNoteBlock(block.id, { question: nextQuestion, answer: nextAnswer });
+      setSaveState("saved");
+    } catch {
+      setSaveState("error");
+    }
+  }
+
+  function flush() {
+    clearTimeout(saveTimer.current);
+    const latest = latestValues.current;
+    void persist(latest.question, latest.answer);
+  }
+
+  useEffect(() => {
+    const flushWhenHidden = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", flushWhenHidden);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", flushWhenHidden);
+      flush();
+    };
+  }, [block.id]);
+
   function save(nextQuestion: string, nextAnswer: string, delay = 500) {
     clearTimeout(saveTimer.current);
+    latestValues.current = { question: nextQuestion, answer: nextAnswer };
     setSaveState("saving");
-    saveTimer.current = setTimeout(async () => {
-      if (nextQuestion !== block.question || nextAnswer !== block.answer) {
-        try {
-          await updateNoteBlock(block.id, {
-            question: nextQuestion,
-            answer: nextAnswer,
-          });
-          setSaveState("saved");
-        } catch {
-          setSaveState("error");
-        }
-      } else {
-        setSaveState("saved");
-      }
-    }, delay);
+    saveTimer.current = setTimeout(() => void persist(nextQuestion, nextAnswer), delay);
   }
 
   return (
@@ -495,7 +595,7 @@ function QaBlockEditor({
               }}
               onBlur={() => {
                 setIsEditing(false);
-                save(question, answer, 0);
+                flush();
               }}
             />
             <Button
@@ -528,7 +628,7 @@ function QaBlockEditor({
               }}
               onBlur={() => {
                 setIsEditing(false);
-                save(question, answer, 0);
+                flush();
               }}
             />
             <Button
@@ -608,81 +708,25 @@ function QaBlocksList({
 }
 
 function EmptyEditor({
-  historyView,
   onImport,
   onCreate,
 }: {
-  historyView: boolean;
   onImport: () => void;
   onCreate: () => void;
 }) {
   return (
-    <main className="editor-hero relative flex min-h-0 flex-1 items-start overflow-x-hidden overflow-y-auto p-4 sm:p-8 lg:items-center lg:p-12">
-      <div className="relative z-10 mx-auto w-full max-w-5xl">
-        <div className="mb-7 flex items-center gap-3">
-          <Badge className="royal-glow rounded-full px-3 py-1">
-            <Sparkles className="size-3" />
-            {historyView ? "Synced history" : "Offline knowledge studio"}
-          </Badge>
-          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-            Private by design
-          </span>
-        </div>
-
-        <h1 className="text-balance max-w-4xl text-5xl font-semibold leading-[0.95] tracking-[-0.065em] sm:text-6xl lg:text-8xl">
-          {historyView ? "Your conversations, " : "Give your thinking a "}
-          <span className="bg-gradient-to-r from-crimson-bright via-ivory to-primary bg-clip-text text-transparent">
-            {historyView ? "ready when you are." : "second life."}
-          </span>
-        </h1>
-        <p className="mt-7 max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
-          {historyView
-            ? "Your synced and imported chats will appear here. Import a new conversation to start building your history."
-            : "Build free-form Markdown notes or structured Q&A, then keep everything private, searchable, and useful without a network connection."}
+    <main className="editor-hero relative grid min-h-0 flex-1 place-items-center overflow-hidden p-6">
+      <div className="max-w-md text-center">
+        <span className="mx-auto grid size-12 place-items-center rounded-xl border border-white/8 bg-white/[0.035] text-primary">
+          <FileText className="size-5" />
+        </span>
+        <h1 className="mt-5 text-xl font-semibold tracking-[-0.035em]">Open a note from the sidebar</h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          Your last file, folder, sidebar state, and every edit are kept locally for the next launch.
         </p>
-
-        <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-          <Button size="lg" className="royal-glow h-11 px-5" onClick={onImport}>
-            Import ChatGPT history
-            <ArrowUpRight />
-          </Button>
-          <Button size="lg" variant="outline" className="h-11 px-5" onClick={onCreate}>
-            <Plus />
-            Start a blank note
-          </Button>
-        </div>
-
-        <div className="mt-14 grid gap-3 sm:grid-cols-3">
-          {[
-            {
-              icon: CloudOff,
-              title: "Works offline",
-              description: "Your library opens and edits without the backend.",
-            },
-            {
-              icon: MessageSquareText,
-              title: "Markdown native",
-              description: "Headings, lists, emphasis, tables, and code stay structured.",
-            },
-            {
-              icon: FileDown,
-              title: "Portable ownership",
-              description: "Exports and backups stay under your control.",
-            },
-          ].map((feature) => (
-            <Card
-              className="border-white/8 bg-card/55 shadow-lg shadow-black/10 backdrop-blur-xl"
-              key={feature.title}
-            >
-              <CardContent className="p-5">
-                <feature.icon className="mb-4 size-5 text-primary" />
-                <p className="text-sm font-medium">{feature.title}</p>
-                <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
-                  {feature.description}
-                </p>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
+          <Button onClick={onCreate}><Plus /> New note</Button>
+          <Button variant="outline" onClick={onImport}><Download /> Import chats</Button>
         </div>
       </div>
     </main>
@@ -726,7 +770,7 @@ export function NoteEditor({
   }, [focusMode, onFocusModeChange]);
 
   if (!note) {
-    return <EmptyEditor historyView={emptyView === "history"} onImport={onImport} onCreate={onCreate} />;
+    return <EmptyEditor onImport={onImport} onCreate={onCreate} />;
   }
   const activeNote = note;
   const markdownBlock = note.source === "markdown" ? blocks[0] : undefined;
