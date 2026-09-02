@@ -1953,7 +1953,7 @@ export function LibraryApp({
                 />
               </div>
               <div className="hidden min-h-0 flex-1 lg:flex">
-                <NoteEditor note={selectedNote} blocks={blocks} collections={collections} emptyView="history" focusMode={isFocusMode} onFocusModeChange={setIsFocusMode} onDeleted={() => setSelectedNoteId(undefined)} onArchived={() => setSelectedNoteId(undefined)} onImport={() => setIsImportOpen(true)} onCreate={() => void createNote()} />
+                <NoteEditor note={selectedNote} blocks={blocks} collections={collections} emptyView="history" focusMode={isFocusMode} onFocusModeChange={setIsFocusMode} onDeleted={() => { setIsFocusMode(false); setSelectedNoteId(undefined); }} onArchived={() => { setIsFocusMode(false); setSelectedNoteId(undefined); }} onImport={() => setIsImportOpen(true)} onCreate={() => void createNote()} />
               </div>
             </>
           ) : (
@@ -1965,10 +1965,12 @@ export function LibraryApp({
               focusMode={isFocusMode}
               onFocusModeChange={setIsFocusMode}
               onDeleted={() => {
+                setIsFocusMode(false);
                 setSelectedNoteId(undefined);
                 if (session) requestSync(session, false);
               }}
               onArchived={() => {
+                setIsFocusMode(false);
                 setSelectedNoteId(undefined);
                 setPage(1);
               }}

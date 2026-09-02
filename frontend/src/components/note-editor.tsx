@@ -233,11 +233,9 @@ function CollapsibleMarkdown({ content, empty }: { content: string; empty: strin
 function PlainNoteEditor({
   block,
   view,
-  onViewChange,
 }: {
   block: NoteBlock;
   view: "write" | "preview";
-  onViewChange: (view: "write" | "preview") => void;
 }) {
   const [content, setContent] = useState(block.answer);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
@@ -324,10 +322,6 @@ function PlainNoteEditor({
             {saveState === "saving" ? <LoaderCircle className="size-3 animate-spin" /> : <Check className="size-3" />}
             {saveState}
           </span>
-          <div className="flex rounded-lg border border-white/8 bg-black/20 p-0.5">
-            <Button type="button" variant={view === "write" ? "secondary" : "ghost"} size="xs" onClick={() => onViewChange("write")}><Pencil />Write</Button>
-            <Button type="button" variant={view === "preview" ? "secondary" : "ghost"} size="xs" onClick={() => onViewChange("preview")}><Eye />Reading view</Button>
-          </div>
         </div>
         {view === "write" ? (
           <Textarea
@@ -357,13 +351,11 @@ function QaBlockEditor({
   index,
   canDelete,
   view,
-  onViewChange,
 }: {
   block: NoteBlock;
   index: number;
   canDelete: boolean;
   view: "edit" | "preview";
-  onViewChange: (view: "edit" | "preview") => void;
 }) {
   const [question, setQuestion] = useState(block.question);
   const [answer, setAnswer] = useState(block.answer);
@@ -415,16 +407,6 @@ function QaBlockEditor({
               Knowledge block
             </p>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1.5 text-[10px] text-muted-foreground"
-            onClick={() => onViewChange(view === "edit" ? "preview" : "edit")}
-          >
-            {view === "edit" ? <Eye /> : <Pencil />}
-            {view === "edit" ? "Preview" : "Edit"}
-          </Button>
           <GripVertical className="size-4 text-muted-foreground/50" aria-hidden="true" />
           <span
             className={`hidden items-center gap-1 font-mono text-[8px] uppercase tracking-wide sm:flex ${
@@ -572,12 +554,10 @@ function QaBlocksList({
   blocks,
   lazy,
   view,
-  onViewChange,
 }: {
   blocks: NoteBlock[];
   lazy: boolean;
   view: "edit" | "preview";
-  onViewChange: (view: "edit" | "preview") => void;
 }) {
   const [visibleCount, setVisibleCount] = useState(IMPORTED_BLOCK_BATCH);
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -607,7 +587,6 @@ function QaBlocksList({
             index={index}
             canDelete={blocks.length > 1}
             view={view}
-            onViewChange={onViewChange}
             key={block.id}
           />
         ))}
@@ -965,7 +944,6 @@ export function NoteEditor({
           <PlainNoteEditor
             block={markdownBlock}
             view={viewMode === "read" ? "preview" : "write"}
-            onViewChange={(view) => setViewMode(view === "preview" ? "read" : "edit")}
             key={markdownBlock.id}
           />
         ) : (
@@ -974,7 +952,6 @@ export function NoteEditor({
               blocks={blocks}
               lazy={note.source === "chatgpt"}
               view={viewMode === "read" ? "preview" : "edit"}
-              onViewChange={(view) => setViewMode(view === "preview" ? "read" : "edit")}
               key={note.id}
             />
 
