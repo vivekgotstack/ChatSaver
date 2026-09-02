@@ -46,6 +46,7 @@ import { toast } from "sonner";
 import type { Note, NoteBlock, NoteCollection } from "@/domain/models";
 import {
   addNoteBlock,
+  createMarkdownNote,
   deleteNote,
   deleteNoteBlock,
   toggleArchived,
@@ -748,6 +749,7 @@ export function NoteEditor({
   const [viewMode, setViewMode] = useState<"read" | "edit">("read");
   const [readerWidth, setReaderWidth] = useState<"focused" | "comfortable" | "wide">("comfortable");
   const [fontSize, setFontSize] = useState(16);
+  const [isSeparating, setIsSeparating] = useState(false);
   const initializedNote = useRef<string | undefined>(undefined);
 
   useEffect(() => {
@@ -790,6 +792,32 @@ export function NoteEditor({
     if (archived === undefined) return;
     toast.success(archived ? "Note archived" : "Note returned to the library");
     onArchived();
+  }
+
+  async function separateQaIntoNotes() {
+    if (markdownBlock || isSeparating) return;
+    const populatedBlocks = blocks.filter((block) => block.question.trim() || block.answer.trim());
+    if (!populatedBlocks.length) {
+      toast.error("This Q&A note has no content to separate.");
+      return;
+    }
+    setIsSeparating(true);
+    try {
+      for (const [index, block] of populatedBlocks.entries()) {
+        const title = block.question.trim() || `${activeNote.title} — ${index + 1}`;
+        const newNoteId = await createMarkdownNote(title, block.answer.trim());
+        for (const collectionId of activeNote.collectionIds ?? []) {
+          await toggleNoteCollection(newNoteId, collectionId);
+        }
+      }
+      toast.success(`${populatedBlocks.length} individual note${populatedBlocks.length === 1 ? "" : "s"} created`, {
+        description: "The original Q&A note was kept unchanged.",
+      });
+    } catch {
+      toast.error("The Q&A note could not be separated.");
+    } finally {
+      setIsSeparating(false);
+    }
   }
 
   return (
@@ -846,11 +874,11 @@ export function NoteEditor({
                   <TooltipContent>Reading appearance</TooltipContent>
                 </Tooltip>
                 <DropdownMenuContent align="end" className="w-52">
-                  <DropdownMenuLabel>Page width</DropdownMenuLabel>
-                  <DropdownMenuItem onSelect={() => setReaderWidth("focused")}><Check className={readerWidth === "focused" ? "opacity-100" : "opacity-0"} /> Focused</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setReaderWidth("comfortable")}><Check className={readerWidth === "comfortable" ? "opacity-100" : "opacity-0"} /> Comfortable</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setReaderWidth("wide")}><Check className={readerWidth === "wide" ? "opacity-100" : "opacity-0"} /> Wide</DropdownMenuItem>
-                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="hidden lg:block">Page width</DropdownMenuLabel>
+                  <DropdownMenuItem className="hidden lg:flex" onSelect={() => setReaderWidth("focused")}><Check className={readerWidth === "focused" ? "opacity-100" : "opacity-0"} /> Focused</DropdownMenuItem>
+                  <DropdownMenuItem className="hidden lg:flex" onSelect={() => setReaderWidth("comfortable")}><Check className={readerWidth === "comfortable" ? "opacity-100" : "opacity-0"} /> Comfortable</DropdownMenuItem>
+                  <DropdownMenuItem className="hidden lg:flex" onSelect={() => setReaderWidth("wide")}><Check className={readerWidth === "wide" ? "opacity-100" : "opacity-0"} /> Wide</DropdownMenuItem>
+                  <DropdownMenuSeparator className="hidden lg:block" />
                   <DropdownMenuLabel>Text size · {fontSize}px</DropdownMenuLabel>
                   <DropdownMenuItem disabled={fontSize <= 13} onSelect={() => setFontSize((size) => Math.max(13, size - 1))}><Minus /> Smaller</DropdownMenuItem>
                   <DropdownMenuItem disabled={fontSize >= 22} onSelect={() => setFontSize((size) => Math.min(22, size + 1))}><Plus /> Larger</DropdownMenuItem>
@@ -946,6 +974,12 @@ export function NoteEditor({
                     <Copy />
                     Copy plain text
                   </DropdownMenuItem>
+                  {!markdownBlock ? (
+                    <DropdownMenuItem disabled={isSeparating} onSelect={() => void separateQaIntoNotes()}>
+                      {isSeparating ? <LoaderCircle className="animate-spin" /> : <FileText />}
+                      {isSeparating ? "Creating notes…" : "Separate into individual notes"}
+                    </DropdownMenuItem>
+                  ) : null}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onSelect={() => void archive()}>
                     <Archive />

@@ -8,6 +8,7 @@
 - Clicking a folder or note updates mounted workspace state; it must not navigate between `/`, `/history`, and `/collections`.
 - Keep a small sidebar open/close control at the top-left. Mobile uses the existing Sheet; desktop collapses the persistent sidebar.
 - Reading and editing happen in the same note surface. Avoid drawers, modal readers, multi-note overview grids, and nested cards.
+- Q&A notes expose a non-destructive “Separate into individual notes” action. Each populated Q&A block becomes a standalone Markdown note, inherits the source collections, and leaves the original unchanged.
 
 ## Data safety
 
