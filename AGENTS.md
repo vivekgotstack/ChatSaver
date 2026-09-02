@@ -48,10 +48,12 @@ From `frontend/` (the global npm shim may be broken, so direct local binaries ar
 ```powershell
 & node_modules\.bin\tsc.cmd --noEmit
 node node_modules\next\dist\bin\next build
-node node_modules\@tauri-apps\cli\tauri.js build --bundles nsis
+node scripts\build-tauri.mjs
+& node_modules\.bin\tauri.cmd build --config src-tauri\tauri.local-build.json --bundles nsis
 ```
 
 - Always run `git diff --check` before release.
+- `tauri.local-build.json` skips the duplicate static-export command after `build-tauri.mjs`; this also avoids relying on a machine-global npm shim.
 - A desktop release is published by pushing a plain semantic-version tag. `.github/workflows/desktop-release.yml` builds Windows NSIS and macOS DMG assets and creates the GitHub release.
 
 ## Version and release
