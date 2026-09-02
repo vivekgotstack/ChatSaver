@@ -311,17 +311,23 @@ function PlainNoteEditor({
     <Card className="overflow-hidden border-white/8 bg-card/38 py-0 shadow-none backdrop-blur-sm">
       <CardContent className="p-0">
         <div className="flex flex-wrap items-center gap-2 border-b border-white/7 bg-black/15 px-3 py-2.5 sm:px-4">
-          <div className="me-auto flex flex-wrap items-center gap-1">
-            {tools.map(({ label, icon: Icon, action }) => (
-              <Button key={label} type="button" variant="ghost" size="icon-sm" title={label} aria-label={label} onClick={action}>
-                <Icon />
-              </Button>
-            ))}
-          </div>
-          <span className={`me-1 hidden items-center gap-1 font-mono text-[8px] uppercase tracking-wide sm:flex ${saveState === "error" ? "text-destructive" : "text-muted-foreground"}`} aria-live="polite">
-            {saveState === "saving" ? <LoaderCircle className="size-3 animate-spin" /> : <Check className="size-3" />}
-            {saveState}
-          </span>
+          {view === "write" ? (
+            <>
+              <div className="me-auto flex flex-wrap items-center gap-1">
+                {tools.map(({ label, icon: Icon, action }) => (
+                  <Button key={label} type="button" variant="ghost" size="icon-sm" title={label} aria-label={label} onClick={action}>
+                    <Icon />
+                  </Button>
+                ))}
+              </div>
+              <span className={`me-1 hidden items-center gap-1 font-mono text-[8px] uppercase tracking-wide sm:flex ${saveState === "error" ? "text-destructive" : "text-muted-foreground"}`} aria-live="polite">
+                {saveState === "saving" ? <LoaderCircle className="size-3 animate-spin" /> : <Check className="size-3" />}
+                {saveState}
+              </span>
+            </>
+          ) : (
+            <span className="flex items-center gap-2 text-xs text-muted-foreground"><Eye className="size-3.5" /> Reading view</span>
+          )}
         </div>
         {view === "write" ? (
           <Textarea
@@ -407,21 +413,17 @@ function QaBlockEditor({
               Knowledge block
             </p>
           </div>
-          <GripVertical className="size-4 text-muted-foreground/50" aria-hidden="true" />
-          <span
-            className={`hidden items-center gap-1 font-mono text-[8px] uppercase tracking-wide sm:flex ${
-              saveState === "error" ? "text-destructive" : "text-muted-foreground"
-            }`}
-            aria-live="polite"
-          >
-            {saveState === "saving" ? (
-              <LoaderCircle className="size-3 animate-spin" />
-            ) : (
-              <Check className="size-3" />
-            )}
-            {saveState}
-          </span>
-          {canDelete ? (
+          {view === "edit" ? <GripVertical className="size-4 text-muted-foreground/50" aria-hidden="true" /> : null}
+          {view === "edit" ? (
+            <span
+              className={`hidden items-center gap-1 font-mono text-[8px] uppercase tracking-wide sm:flex ${saveState === "error" ? "text-destructive" : "text-muted-foreground"}`}
+              aria-live="polite"
+            >
+              {saveState === "saving" ? <LoaderCircle className="size-3 animate-spin" /> : <Check className="size-3" />}
+              {saveState}
+            </span>
+          ) : null}
+          {canDelete && view === "edit" ? (
             <AlertDialog>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -955,14 +957,16 @@ export function NoteEditor({
               key={note.id}
             />
 
-            <Button
-              variant="outline"
-              className="mt-5 h-11 w-full border-dashed border-primary/25 bg-primary/[0.035] text-muted-foreground hover:border-primary/50 hover:bg-primary/8 hover:text-foreground"
-              onClick={() => void addNoteBlock(note.id)}
-            >
-              <Plus />
-              Add another Q&amp;A block
-            </Button>
+            {viewMode === "edit" ? (
+              <Button
+                variant="outline"
+                className="mt-5 h-11 w-full border-dashed border-primary/25 bg-primary/[0.035] text-muted-foreground hover:border-primary/50 hover:bg-primary/8 hover:text-foreground"
+                onClick={() => void addNoteBlock(note.id)}
+              >
+                <Plus />
+                Add another Q&amp;A block
+              </Button>
+            ) : null}
           </>
         )}
       </div>
