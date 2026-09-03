@@ -887,6 +887,36 @@ export async function deleteCollection(id: string): Promise<void> {
   });
 }
 
+export async function deleteNotes(noteIds: string[]): Promise<void> {
+  await db.transaction(
+    "rw",
+    [db.notes, db.noteBlocks, db.conversations, db.messages, db.outbox],
+    async () => {
+      for (const noteId of new Set(noteIds)) await deleteNote(noteId);
+    },
+  );
+}
+
+export async function separateQaNote(noteId: string, blockIds: string[]): Promise<number> {
+  return db.transaction("rw", [db.notes, db.noteBlocks, db.collections, db.outbox], async () => {
+    const note = await db.notes.get(noteId);
+    if (!note || note.source === "markdown") throw new Error("This Q&A note is no longer available.");
+    const selectedIds = new Set(blockIds);
+    const blocks = (await db.noteBlocks.where("noteId").equals(noteId).sortBy("position"))
+      .filter((block) => selectedIds.has(block.id) && (block.question.trim() || block.answer.trim()));
+    if (!blocks.length) throw new Error("Select at least one populated Q&A block.");
+    if (blocks.length !== selectedIds.size) throw new Error("Some selected blocks have changed. Review your selection and try again.");
+    for (const block of blocks) {
+      const title = block.question.trim() || `${note.title} — ${block.position + 1}`;
+      const newNoteId = await createMarkdownNote(title, block.answer.trim());
+      for (const collectionId of note.collectionIds ?? []) {
+        await toggleNoteCollection(newNoteId, collectionId);
+      }
+    }
+    return blocks.length;
+  });
+}
+
 export async function deleteNote(noteId: string): Promise<void> {
   await db.transaction(
     "rw",

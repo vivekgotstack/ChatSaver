@@ -48,6 +48,7 @@ import type {
   NoteSort,
 } from "@/domain/models";
 import { NoteEditor } from "@/components/note-editor";
+import { MobileNoteList } from "@/components/mobile-note-list";
 import { AccountDialog } from "@/components/account-dialog";
 import { ConnectedIntegrationsShortcut } from "@/components/connected-integrations-shortcut";
 import { PrivateVaultShortcut } from "@/components/private-vault-shortcut";
@@ -448,6 +449,7 @@ interface LibrarySidebarProps {
   onSortChange: (sort: NoteSort) => void;
   onPageChange: (page: number) => void;
   onSelect: (noteId: string) => void;
+  onNotesDeleted: (noteIds: string[]) => void;
   onCreate: () => void;
   onBrowseAll: () => void;
 }
@@ -527,9 +529,11 @@ function LibrarySidebar({
   onSortChange,
   onPageChange,
   onSelect,
+  onNotesDeleted,
   onCreate,
   onBrowseAll,
 }: LibrarySidebarProps) {
+  const [isSelectingNotes, setIsSelectingNotes] = useState(false);
   if (laptop) {
     return (
       <div className="sidebar-surface flex h-full min-h-0 flex-col overflow-hidden select-none">
@@ -667,6 +671,7 @@ function LibrarySidebar({
 
   return (
     <div className="sidebar-surface flex h-full min-h-0 flex-col overflow-x-hidden">
+      <div className={isSelectingNotes ? "hidden" : "max-h-[50dvh] shrink-0 overflow-y-auto"}>
       <div className="shrink-0 px-4 pb-3 pt-4">
         <Button className="royal-glow h-10 w-full justify-start gap-2" onClick={onCreate}>
           <Plus />
@@ -800,33 +805,15 @@ function LibrarySidebar({
         </Select>
       </div>
 
-      <ScrollArea className="library-notes-scroll min-h-0 flex-1 overflow-hidden px-2">
-        <div className="space-y-1 px-1 pb-4">
-          {page.items.map((note) => (
-            <Button
-              variant="ghost"
-              className={`group h-9 w-full justify-start gap-2 px-2.5 text-start text-xs font-normal ${
-                note.id === selectedNoteId
-                  ? "bg-primary/12 text-foreground hover:bg-primary/16"
-                  : "text-muted-foreground"
-              }`}
-              type="button"
-              key={note.id}
-              onClick={() => onSelect(note.id)}
-            >
-              <FileText className={`size-3.5 ${note.id === selectedNoteId ? "text-primary" : "text-muted-foreground/70"}`} />
-              <span className="min-w-0 flex-1 truncate text-foreground">{note.title}</span>
-              {note.isFavorite ? <Star className="size-3 fill-primary text-primary" /> : null}
-            </Button>
-          ))}
-          {!page.items.length ? (
-            <div className="mx-2 mt-3 rounded-xl border border-dashed border-white/10 bg-black/10 px-4 py-7 text-center">
-              <FilePlus2 className="mx-auto mb-3 size-5 text-primary" />
-              <p className="text-xs text-muted-foreground">{query ? "Nothing matches that search." : "This view is empty."}</p>
-            </div>
-          ) : null}
-        </div>
-      </ScrollArea>
+      </div>
+      <MobileNoteList
+        key={JSON.stringify([query, filter, collectionId, page.page])}
+        notes={page.items}
+        activeNoteId={selectedNoteId}
+        onSelect={onSelect}
+        onDeleted={onNotesDeleted}
+        onSelectionModeChange={setIsSelectingNotes}
+      />
 
       {page.totalPages > 1 ? (
         <div className="flex shrink-0 items-center justify-between border-t border-white/7 px-3 py-2">
@@ -1584,6 +1571,14 @@ export function LibraryApp({
       setSelectedNoteId(undefined);
     },
     onSelect: selectNote,
+    onNotesDeleted: (noteIds) => {
+      if (activeNoteId && noteIds.includes(activeNoteId)) {
+        setSelectedNoteId(undefined);
+        setIsFocusMode(false);
+      }
+      setPage(1);
+      if (session) requestSync(session, false);
+    },
     onCreate: () => void createNote(),
     onBrowseAll: openAllNotes,
   };
@@ -1801,7 +1796,7 @@ export function LibraryApp({
             <TooltipContent>{isSidebarOpen ? "Close sidebar" : "Open sidebar"}</TooltipContent>
           </Tooltip>
           <Sheet open={isMobileLibraryOpen} onOpenChange={setIsMobileLibraryOpen}>
-            <SheetContent side="left" className="w-screen max-w-none border-e-white/10 p-0 sm:w-[390px]"><SheetHeader className="sr-only"><SheetTitle>File sidebar</SheetTitle><SheetDescription>Browse notes, filters, and collections.</SheetDescription></SheetHeader><LibrarySidebar {...mobileSidebarProps} /></SheetContent>
+            <SheetContent side="left" className="w-screen max-w-none border-e-white/10 p-0 sm:w-[390px]"><SheetHeader className="sr-only"><SheetTitle>File sidebar</SheetTitle><SheetDescription>Browse notes, filters, and collections.</SheetDescription></SheetHeader><LibrarySidebar key={vaultKey} {...mobileSidebarProps} /></SheetContent>
           </Sheet>
 
           <Link className="flex items-center gap-2.5" href="/" aria-label="ChatSaver home">

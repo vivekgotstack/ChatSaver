@@ -46,7 +46,7 @@ import { toast } from "sonner";
 import type { Note, NoteBlock, NoteCollection } from "@/domain/models";
 import {
   addNoteBlock,
-  createMarkdownNote,
+  separateQaNote,
   deleteNote,
   deleteNoteBlock,
   toggleArchived,
@@ -73,6 +73,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -734,6 +736,85 @@ function EmptyEditor({
   );
 }
 
+function SeparateQaDialog({ note, blocks, onClose }: {
+  note: Note;
+  blocks: NoteBlock[];
+  onClose: () => void;
+}) {
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [isSeparating, setIsSeparating] = useState(false);
+  const busy = useRef(false);
+  const populatedBlocks = blocks.filter((block) => block.noteId === note.id && (block.question.trim() || block.answer.trim()));
+  const selectedBlocks = populatedBlocks.filter((block) => selectedIds.has(block.id));
+  const allSelected = populatedBlocks.length > 0 && selectedBlocks.length === populatedBlocks.length;
+
+  async function separate() {
+    if (busy.current || !selectedBlocks.length) return;
+    busy.current = true;
+    setIsSeparating(true);
+    try {
+      const count = await separateQaNote(note.id, selectedBlocks.map((block) => block.id));
+      toast.success(`${count} individual note${count === 1 ? "" : "s"} created`, {
+        description: "The original Q&A note was kept unchanged.",
+      });
+      onClose();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The selected Q&A blocks could not be separated.");
+    } finally {
+      busy.current = false;
+      setIsSeparating(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open && !busy.current) onClose(); }}>
+      <DialogContent className="flex max-h-[85dvh] flex-col overflow-hidden sm:max-w-xl" showCloseButton={!isSeparating}>
+        <DialogHeader className="shrink-0 pe-6">
+          <DialogTitle>Choose Q&amp;A blocks to separate</DialogTitle>
+          <DialogDescription>Each selected block becomes a Markdown note in the same collections. Your original note stays unchanged.</DialogDescription>
+        </DialogHeader>
+        <div className="flex shrink-0 items-center justify-between gap-2">
+          <span className="text-sm text-muted-foreground" aria-live="polite">{selectedBlocks.length} of {populatedBlocks.length} selected</span>
+          <Button variant="outline" className="h-11" disabled={isSeparating || !populatedBlocks.length} onClick={() => setSelectedIds(allSelected ? new Set() : new Set(populatedBlocks.map((block) => block.id)))}>
+            {allSelected ? "Clear selection" : "Select all"}
+          </Button>
+        </div>
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain">
+          {populatedBlocks.map((block) => (
+            <label key={block.id} className="flex cursor-pointer items-start gap-3 rounded-lg border border-white/10 p-3 has-[[data-state=checked]]:border-primary/50">
+              <Checkbox
+                className="mt-1"
+                checked={selectedIds.has(block.id)}
+                disabled={isSeparating}
+                aria-label={`Select Q&A block ${block.position + 1}`}
+                onCheckedChange={(checked) => setSelectedIds((current) => {
+                  const next = new Set(current);
+                  if (checked === true) next.add(block.id);
+                  else next.delete(block.id);
+                  return next;
+                })}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="mb-1 block text-xs text-muted-foreground">Q&amp;A {block.position + 1}</span>
+                <span className="line-clamp-3 break-words text-sm font-medium [overflow-wrap:anywhere]">{block.question.trim().slice(0, 300) || "Answer only"}</span>
+                {block.answer.trim() ? <span className="mt-1 line-clamp-2 break-words text-xs text-muted-foreground [overflow-wrap:anywhere]">{block.answer.slice(0, 300)}</span> : null}
+              </span>
+            </label>
+          ))}
+          {!populatedBlocks.length ? <p className="py-4 text-sm text-muted-foreground">There are no populated Q&amp;A blocks to separate.</p> : null}
+        </div>
+        <DialogFooter className="shrink-0">
+          <Button variant="outline" className="h-11" disabled={isSeparating} onClick={onClose}>Cancel</Button>
+          <Button className="h-11" disabled={isSeparating || !selectedBlocks.length} onClick={() => void separate()}>
+            {isSeparating ? <LoaderCircle className="animate-spin" /> : <FileText />}
+            {isSeparating ? "Creating notes…" : `Separate selected (${selectedBlocks.length})`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function NoteEditor({
   note,
   blocks,
@@ -749,7 +830,7 @@ export function NoteEditor({
   const [viewMode, setViewMode] = useState<"read" | "edit">("read");
   const [readerWidth, setReaderWidth] = useState<"focused" | "comfortable" | "wide">("comfortable");
   const [fontSize, setFontSize] = useState(16);
-  const [isSeparating, setIsSeparating] = useState(false);
+  const [separatingNoteId, setSeparatingNoteId] = useState<string>();
   const initializedNote = useRef<string | undefined>(undefined);
 
   useEffect(() => {
@@ -792,32 +873,6 @@ export function NoteEditor({
     if (archived === undefined) return;
     toast.success(archived ? "Note archived" : "Note returned to the library");
     onArchived();
-  }
-
-  async function separateQaIntoNotes() {
-    if (markdownBlock || isSeparating) return;
-    const populatedBlocks = blocks.filter((block) => block.question.trim() || block.answer.trim());
-    if (!populatedBlocks.length) {
-      toast.error("This Q&A note has no content to separate.");
-      return;
-    }
-    setIsSeparating(true);
-    try {
-      for (const [index, block] of populatedBlocks.entries()) {
-        const title = block.question.trim() || `${activeNote.title} — ${index + 1}`;
-        const newNoteId = await createMarkdownNote(title, block.answer.trim());
-        for (const collectionId of activeNote.collectionIds ?? []) {
-          await toggleNoteCollection(newNoteId, collectionId);
-        }
-      }
-      toast.success(`${populatedBlocks.length} individual note${populatedBlocks.length === 1 ? "" : "s"} created`, {
-        description: "The original Q&A note was kept unchanged.",
-      });
-    } catch {
-      toast.error("The Q&A note could not be separated.");
-    } finally {
-      setIsSeparating(false);
-    }
   }
 
   return (
@@ -975,9 +1030,9 @@ export function NoteEditor({
                     Copy plain text
                   </DropdownMenuItem>
                   {!markdownBlock ? (
-                    <DropdownMenuItem disabled={isSeparating} onSelect={() => void separateQaIntoNotes()}>
-                      {isSeparating ? <LoaderCircle className="animate-spin" /> : <FileText />}
-                      {isSeparating ? "Creating notes…" : "Separate into individual notes"}
+                    <DropdownMenuItem onSelect={() => setSeparatingNoteId(note.id)}>
+                      <FileText />
+                      Separate into individual notes
                     </DropdownMenuItem>
                   ) : null}
                   <DropdownMenuSeparator />
@@ -1019,6 +1074,10 @@ export function NoteEditor({
         </header>
 
         <Separator className="mb-7 bg-white/8" />
+
+        {separatingNoteId === note.id ? (
+          <SeparateQaDialog key={note.id} note={note} blocks={blocks} onClose={() => setSeparatingNoteId(undefined)} />
+        ) : null}
 
         {markdownBlock ? (
           <PlainNoteEditor
