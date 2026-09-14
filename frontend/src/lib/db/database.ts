@@ -596,7 +596,7 @@ export async function createBlankNote(format: ManualNoteFormat): Promise<string>
   const note: Note = {
     id: makeId(),
     title: "Untitled note",
-    source: format === "markdown" ? "markdown" : "manual",
+    source: format === "qa" ? "manual" : format,
     isFavorite: false,
     isArchived: false,
     collectionIds: [],
@@ -914,7 +914,7 @@ export async function deleteNotes(noteIds: string[]): Promise<void> {
 export async function separateQaNote(noteId: string, blockIds: string[]): Promise<number> {
   return db.transaction("rw", [db.notes, db.noteBlocks, db.collections, db.outbox], async () => {
     const note = await db.notes.get(noteId);
-    if (!note || note.source === "markdown") throw new Error("This Q&A note is no longer available.");
+    if (!note || (note.source !== "manual" && note.source !== "chatgpt")) throw new Error("This Q&A note is no longer available.");
     const selectedIds = new Set(blockIds);
     const blocks = (await db.noteBlocks.where("noteId").equals(noteId).sortBy("position"))
       .filter((block) => selectedIds.has(block.id) && (block.question.trim() || block.answer.trim()));

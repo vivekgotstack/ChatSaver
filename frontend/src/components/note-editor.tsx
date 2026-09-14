@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useNoteDraft } from "@/hooks/use-note-draft";
+import { ChecklistNoteEditor } from "@/components/checklist-note-editor";
 import type { CSSProperties } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -698,6 +699,8 @@ export function NoteEditor({
   }
   const activeNote = note;
   const markdownBlock = note.source === "markdown" ? blocks[0] : undefined;
+  const checklistBlock = note.source === "checklist" ? blocks[0] : undefined;
+  const isQa = note.source === "manual" || note.source === "chatgpt";
   const documentWidth = readerWidth === "focused" ? "max-w-3xl" : readerWidth === "wide" ? "max-w-[92rem]" : "max-w-6xl";
 
   async function copyText() {
@@ -724,10 +727,10 @@ export function NoteEditor({
             <div className="min-w-0 flex-1">
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className="border-primary/25 bg-primary/8 text-primary-foreground">
-                  {markdownBlock ? <FileText className="size-3" /> : <MessageSquareText className="size-3" />}
-                  {markdownBlock ? "Markdown note" : "Q&A note"}
+                  {checklistBlock ? <ListChecks className="size-3" /> : markdownBlock ? <FileText className="size-3" /> : <MessageSquareText className="size-3" />}
+                  {checklistBlock ? "Checklist" : markdownBlock ? "Markdown note" : "Q&A note"}
                 </Badge>
-                {!markdownBlock ? (
+                {isQa ? (
                   <Badge variant="secondary" className="font-mono text-[10px] uppercase">
                     {note.blockCount} blocks
                   </Badge>
@@ -755,10 +758,10 @@ export function NoteEditor({
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
-              <div className="me-1 flex rounded-lg border border-white/8 bg-black/20 p-0.5" aria-label="Note mode">
+              {!checklistBlock ? <div className="me-1 flex rounded-lg border border-white/8 bg-black/20 p-0.5" aria-label="Note mode">
                 <Button type="button" variant={viewMode === "read" ? "secondary" : "ghost"} size="sm" onClick={() => setViewMode("read")}><Eye /> Read</Button>
                 <Button type="button" variant={viewMode === "edit" ? "secondary" : "ghost"} size="sm" onClick={() => setViewMode("edit")}><Pencil /> Edit</Button>
-              </div>
+              </div> : null}
 
               <DropdownMenu>
                 <Tooltip>
@@ -870,7 +873,7 @@ export function NoteEditor({
                     <Copy />
                     Copy plain text
                   </DropdownMenuItem>
-                  {!markdownBlock ? (
+                  {isQa ? (
                     <DropdownMenuItem onSelect={() => setSeparatingNoteId(note.id)}>
                       <FileText />
                       Separate into individual notes
@@ -920,7 +923,7 @@ export function NoteEditor({
           <SeparateQaDialog key={note.id} note={note} blocks={blocks} onClose={() => setSeparatingNoteId(undefined)} />
         ) : null}
 
-        {markdownBlock ? (
+        {checklistBlock ? <ChecklistNoteEditor key={checklistBlock.id} block={checklistBlock} /> : markdownBlock ? (
           <PlainNoteEditor
             block={markdownBlock}
             view={viewMode === "read" ? "preview" : "write"}

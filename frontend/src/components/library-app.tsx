@@ -24,6 +24,7 @@ import {
   FolderHeart,
   Import,
   LoaderCircle,
+  ListChecks,
   MessageSquareText,
   MoreHorizontal,
   PanelLeftClose,
@@ -308,10 +309,10 @@ function NewNoteDialog({
         <DialogHeader>
           <DialogTitle>Choose your note format</DialogTitle>
           <DialogDescription>
-            Start with a free-form Markdown page or a structured question-and-answer note.
+            Start with a Markdown page, a Q&amp;A note, or a Keep-style checklist.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3">
           <button
             type="button"
             className="group rounded-2xl border border-primary/25 bg-primary/[0.06] p-4 text-left transition-colors hover:border-primary/55 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
@@ -338,6 +339,20 @@ function NewNoteDialog({
             <span className="block text-sm font-semibold">Q&amp;A note</span>
             <span className="mt-1.5 block text-xs leading-5 text-muted-foreground">
               Structured question-and-answer blocks, matching imported ChatGPT conversations.
+            </span>
+          </button>
+          <button
+            type="button"
+            className="group rounded-2xl border border-white/10 bg-white/[0.025] p-4 text-left transition-colors hover:border-primary/40 hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            disabled={Boolean(creating)}
+            onClick={() => void choose("checklist")}
+          >
+            <span className="mb-4 grid size-10 place-items-center rounded-xl bg-white/[0.05] text-ivory/75">
+              {creating === "checklist" ? <LoaderCircle className="animate-spin" /> : <ListChecks />}
+            </span>
+            <span className="block text-sm font-semibold">Keep-style checklist</span>
+            <span className="mt-1.5 block text-xs leading-5 text-muted-foreground">
+              Capture ideas and lists. Check off items, edit inline, and keep completed items together.
             </span>
           </button>
         </div>
@@ -938,7 +953,7 @@ function ChatBrowserDrawer({
                       <span className="mt-2 flex flex-wrap items-center gap-1.5 font-mono text-[9px] uppercase tracking-wide text-muted-foreground">
                         {note.blockCount} block{note.blockCount === 1 ? "" : "s"}
                         <span className="size-0.5 rounded-full bg-current" />
-                        {note.source === "chatgpt" ? "Imported" : note.source === "markdown" ? "Markdown" : "Q&A"}
+                        {note.source === "chatgpt" ? "Imported" : note.source === "markdown" ? "Markdown" : note.source === "checklist" ? "Checklist" : "Q&A"}
                       </span>
                     </span>
                     <ChevronRight className="mt-2 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
@@ -1019,7 +1034,7 @@ function ResourceOverview({
                     <span className="mt-2 flex flex-wrap items-center gap-1.5 font-mono text-[9px] uppercase tracking-wide text-muted-foreground">
                       {note.blockCount} block{note.blockCount === 1 ? "" : "s"}
                       <span className="size-0.5 rounded-full bg-current" />
-                      {note.source === "chatgpt" ? "Imported chat" : note.source === "markdown" ? "Markdown" : "Q&A"}
+                      {note.source === "chatgpt" ? "Imported chat" : note.source === "markdown" ? "Markdown" : note.source === "checklist" ? "Checklist" : "Q&A"}
                     </span>
                   </span>
                   <ChevronRight className="mt-2 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
