@@ -18,7 +18,7 @@ import type {
 import { toMarkdownText, toPlainText } from "@/lib/plain-text";
 import { createClientUuid } from "@/lib/client-uuid";
 
-class ChatSaverDatabase extends Dexie {
+export class ChatSaverDatabase extends Dexie {
   conversations!: EntityTable<Conversation, "id">;
   messages!: EntityTable<Message, "id">;
   notes!: EntityTable<Note, "id">;
@@ -29,7 +29,7 @@ class ChatSaverDatabase extends Dexie {
   syncMetadata!: EntityTable<SyncMetadata, "key">;
 
   constructor(name: string) {
-    super(name);
+    super(name, { chromeTransactionDurability: "strict" });
     this.version(1).stores({
       conversations: "&id, &externalId, title, updatedAt, syncStatus",
       messages: "&id, conversationId, role, [conversationId+sortIndex], updatedAt",
@@ -155,16 +155,12 @@ export function switchLocalVault(sessionVaultId?: string): string {
 }
 
 export function beginAccountVault(userId: string): string {
-  const sessionVaultId = createClientUuid();
-  try {
-    sessionStorage.setItem(ACTIVE_SESSION_VAULT, JSON.stringify({ userId, sessionVaultId }));
-  } catch {
-    // A fresh in-memory vault is still safe when mobile privacy settings deny storage.
-  }
-  return switchLocalVault(sessionVaultId);
+  return restoreAccountVault(userId);
 }
 
 export function restoreAccountVault(userId: string): string {
+  const accountKey = `chatsaver:account-vault:${userId}`;
+  let sessionVaultId: string | undefined;
   try {
     const stored = JSON.parse(sessionStorage.getItem(ACTIVE_SESSION_VAULT) ?? "null") as {
       userId?: unknown;
@@ -175,15 +171,30 @@ export function restoreAccountVault(userId: string): string {
       && typeof stored.sessionVaultId === "string"
       && stored.sessionVaultId.length > 0
     ) {
-      return switchLocalVault(stored.sessionVaultId);
+      sessionVaultId = stored.sessionVaultId;
     }
   } catch {
     // Invalid session metadata must never select an existing account vault.
   }
-  return beginAccountVault(userId);
+  try { sessionVaultId ??= localStorage.getItem(accountKey) ?? undefined; } catch { /* Optional mapping. */ }
+  sessionVaultId ||= `account:${userId}`;
+  try { localStorage.setItem(accountKey, sessionVaultId); } catch { /* IndexedDB remains available. */ }
+  try { sessionStorage.setItem(ACTIVE_SESSION_VAULT, JSON.stringify({ userId, sessionVaultId })); } catch { /* Optional session cache. */ }
+  try { localStorage.setItem(ACTIVE_SESSION_VAULT, JSON.stringify({ userId })); } catch { /* Optional offline account pointer. */ }
+  return switchLocalVault(sessionVaultId);
+}
+
+export function reopenLocalAccountVault(): string {
+  try {
+    if (localStorage.getItem("chatsaver:account-session") !== "1") return db.name;
+    const stored = JSON.parse(localStorage.getItem(ACTIVE_SESSION_VAULT) ?? "null");
+    if (typeof stored?.userId === "string") return restoreAccountVault(stored.userId);
+  } catch { /* Invalid metadata never selects another account. */ }
+  return db.name;
 }
 
 export function endAccountVault(): string {
+  try { localStorage.removeItem(ACTIVE_SESSION_VAULT); } catch { /* Optional pointer. */ }
   try {
     sessionStorage.removeItem(ACTIVE_SESSION_VAULT);
   } catch {
@@ -221,6 +232,7 @@ export async function activateAccountVault(
   userId: string,
   freshSession = false,
 ): Promise<AccountVaultActivation> {
+  await (await import("./note-drafts")).flushNoteDrafts(db.name);
   const guestBackup = db.name === GUEST_VAULT ? await createVaultBackup() : undefined;
   const databaseName = freshSession ? beginAccountVault(userId) : restoreAccountVault(userId);
   if (!guestBackup) return { databaseName, importedNotes: 0 };
@@ -240,7 +252,7 @@ export async function activateAccountVault(
     if (localStorage.getItem(completedMarkerKey) === signature) {
       return { databaseName, importedNotes: 0 };
     }
-    const sessionMarker = JSON.parse(sessionStorage.getItem(sessionMarkerKey) ?? "null") as { signature?: string; databaseName?: string } | null;
+    const sessionMarker = JSON.parse(localStorage.getItem(sessionMarkerKey) ?? sessionStorage.getItem(sessionMarkerKey) ?? "null") as { signature?: string; databaseName?: string } | null;
     if (sessionMarker?.signature === signature && sessionMarker.databaseName === databaseName) {
       return { databaseName, importedNotes: 0 };
     }
@@ -249,6 +261,7 @@ export async function activateAccountVault(
   }
 
   const importedNotes = await restoreVaultBackup(guestBackup);
+  try { localStorage.setItem(sessionMarkerKey, JSON.stringify({ signature, databaseName })); } catch { /* Session fallback below. */ }
   try { sessionStorage.setItem(sessionMarkerKey, JSON.stringify({ signature, databaseName })); } catch { /* ignored */ }
   return { databaseName, importedNotes };
 }
@@ -257,7 +270,7 @@ export async function activateAccountVault(
 export function confirmGuestMigration(userId: string): void {
   const sessionMarkerKey = `chatsaver:guest-migration-session:${userId}`;
   try {
-    const marker = JSON.parse(sessionStorage.getItem(sessionMarkerKey) ?? "null") as { signature?: string; databaseName?: string } | null;
+    const marker = JSON.parse(localStorage.getItem(sessionMarkerKey) ?? sessionStorage.getItem(sessionMarkerKey) ?? "null") as { signature?: string; databaseName?: string } | null;
     if (marker?.databaseName === db.name && typeof marker.signature === "string") {
       localStorage.setItem(`chatsaver:guest-migration-complete:${userId}`, marker.signature);
     }
@@ -285,8 +298,8 @@ function normalizeSearchText(...parts: string[]): string {
   return parts.join("\n").toLocaleLowerCase().replace(/\s+/g, " ").trim();
 }
 
-async function queueMutation(mutation: OutboxMutation): Promise<void> {
-  const existing = await db.outbox
+async function queueMutation(mutation: OutboxMutation, vault = db): Promise<void> {
+  const existing = await vault.outbox
     .where("[entityType+entityId]")
     .equals([mutation.entityType, mutation.entityId])
     .toArray();
@@ -294,7 +307,7 @@ async function queueMutation(mutation: OutboxMutation): Promise<void> {
   if (mutation.operation === "create") {
     const pendingCreate = existing.find((candidate) => candidate.operation === "create");
     if (pendingCreate) {
-      await db.outbox.put({
+      await vault.outbox.put({
         ...pendingCreate,
         payload: mutation.payload,
         createdAt: mutation.createdAt,
@@ -309,7 +322,7 @@ async function queueMutation(mutation: OutboxMutation): Promise<void> {
       (candidate) => candidate.operation === "create" || candidate.operation === "update",
     );
     if (mergeTarget) {
-      await db.outbox.put({
+      await vault.outbox.put({
         ...mergeTarget,
         payload: mutation.payload,
         createdAt: mutation.createdAt,
@@ -320,11 +333,11 @@ async function queueMutation(mutation: OutboxMutation): Promise<void> {
   }
 
   if (mutation.operation === "delete") {
-    await db.outbox.bulkDelete(existing.map((candidate) => candidate.id));
+    await vault.outbox.bulkDelete(existing.map((candidate) => candidate.id));
     if (existing.some((candidate) => candidate.operation === "create")) return;
   }
 
-  await db.outbox.add(mutation);
+  await vault.outbox.add(mutation);
 }
 
 function queueCreate(
@@ -495,17 +508,17 @@ export async function persistImportedConversations(
   return { imported, skipped, firstNoteId };
 }
 
-export async function updateNoteTitle(noteId: string, title: string): Promise<void> {
+export async function updateNoteTitle(noteId: string, title: string, vault = db): Promise<void> {
   const timestamp = now();
-  await db.transaction("rw", [db.notes, db.noteBlocks, db.outbox], async () => {
-    const note = await db.notes.get(noteId);
+  await vault.transaction("rw", [vault.notes, vault.noteBlocks, vault.outbox], async () => {
+    const note = await vault.notes.get(noteId);
     if (!note) return;
     const updated: Note = {
       ...note,
       title: title.trim() || "Untitled note",
       searchText: normalizeSearchText(
         title.trim() || "Untitled note",
-        ...(await db.noteBlocks
+        ...(await vault.noteBlocks
           .where("noteId")
           .equals(noteId)
           .toArray())
@@ -514,7 +527,7 @@ export async function updateNoteTitle(noteId: string, title: string): Promise<vo
       updatedAt: timestamp,
       syncStatus: "pending",
     };
-    await db.notes.put(updated);
+    await vault.notes.put(updated);
     await queueMutation({
       id: makeId(),
       entityType: "note",
@@ -523,17 +536,18 @@ export async function updateNoteTitle(noteId: string, title: string): Promise<vo
       payload: updated,
       createdAt: timestamp,
       attempts: 0,
-    });
+    }, vault);
   });
 }
 
 export async function updateNoteBlock(
   blockId: string,
   patch: Pick<NoteBlock, "question" | "answer">,
+  vault = db,
 ): Promise<void> {
   const timestamp = now();
-  await db.transaction("rw", [db.noteBlocks, db.notes, db.outbox], async () => {
-    const block = await db.noteBlocks.get(blockId);
+  await vault.transaction("rw", [vault.noteBlocks, vault.notes, vault.outbox], async () => {
+    const block = await vault.noteBlocks.get(blockId);
     if (!block) return;
     const updated: NoteBlock = {
       ...block,
@@ -541,10 +555,10 @@ export async function updateNoteBlock(
       updatedAt: timestamp,
       syncStatus: "pending",
     };
-    await db.noteBlocks.put(updated);
-    const note = await db.notes.get(block.noteId);
+    await vault.noteBlocks.put(updated);
+    const note = await vault.notes.get(block.noteId);
     if (note) {
-      const blocks = await db.noteBlocks.where("noteId").equals(block.noteId).toArray();
+      const blocks = await vault.noteBlocks.where("noteId").equals(block.noteId).toArray();
       const updatedNote: Note = {
         ...note,
         searchText: normalizeSearchText(
@@ -554,7 +568,7 @@ export async function updateNoteBlock(
         updatedAt: timestamp,
         syncStatus: "pending",
       };
-      await db.notes.put(updatedNote);
+      await vault.notes.put(updatedNote);
       await queueMutation({
         id: makeId(),
         entityType: "note",
@@ -563,7 +577,7 @@ export async function updateNoteBlock(
         payload: updatedNote,
         createdAt: timestamp,
         attempts: 0,
-      });
+      }, vault);
     }
     await queueMutation({
       id: makeId(),
@@ -573,7 +587,7 @@ export async function updateNoteBlock(
       payload: updated,
       createdAt: timestamp,
       attempts: 0,
-    });
+    }, vault);
   });
 }
 

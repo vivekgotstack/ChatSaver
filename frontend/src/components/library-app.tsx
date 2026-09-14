@@ -63,9 +63,11 @@ import {
   getLibraryCounts,
   queryNotesPage,
   renameCollection,
+  reopenLocalAccountVault,
   toggleNoteCollection,
 } from "@/lib/db/database";
 import { useLiveQuery } from "@/hooks/use-live-query";
+import { flushNoteDrafts } from "@/lib/db/note-drafts";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1263,6 +1265,7 @@ export function LibraryApp({
 
     void db.notes
       .count()
+      .then(() => flushNoteDrafts(vaultKey))
       .then(() => {
         if (active) setDatabaseState({ status: "ready" });
       })
@@ -1300,8 +1303,10 @@ export function LibraryApp({
     } catch {
       return;
     }
+    changeVault(reopenLocalAccountVault());
     let active = true;
-    void refreshAccount()
+    let retryTimer: ReturnType<typeof setTimeout>;
+    const restore = () => { void refreshAccount()
       .then((restored) => {
         if (!active) return;
         return activateAccountVault(restored.user.id).then(({ databaseName }) => {
@@ -1312,10 +1317,13 @@ export function LibraryApp({
         });
       })
       .catch(() => {
-        try { localStorage.removeItem(ACCOUNT_SESSION_MARKER); } catch { /* ignored */ }
-      });
+        // An offline launch must keep its local account vault and retry automatically.
+        if (active) retryTimer = setTimeout(restore, 30_000);
+      }); };
+    restore();
     return () => {
       active = false;
+      clearTimeout(retryTimer);
     };
   }, []);
 
@@ -1332,6 +1340,14 @@ export function LibraryApp({
     const timer = window.setTimeout(() => requestSync(session, false), 1_000);
     return () => window.clearTimeout(timer);
   }, [session, stats.pending, stats.pendingRevision]);
+
+  useEffect(() => {
+    if (!session) return;
+    const timer = window.setInterval(() => {
+      if (navigator.onLine) requestSync(session, false);
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [session]);
 
   useEffect(() => {
     if (!session || !isVaultRealtimeConfigured()) {

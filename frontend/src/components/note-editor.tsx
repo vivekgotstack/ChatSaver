@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useNoteDraft } from "@/hooks/use-note-draft";
 import type { CSSProperties } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -52,8 +53,6 @@ import {
   toggleArchived,
   toggleFavorite,
   toggleNoteCollection,
-  updateNoteBlock,
-  updateNoteTitle,
 } from "@/lib/db/database";
 import {
   downloadNoteMarkdown,
@@ -107,56 +106,9 @@ interface NoteEditorProps {
 }
 
 function NoteTitleEditor({ note }: { note: Note }) {
-  const [title, setTitle] = useState(note.title);
-  const [isEditing, setIsEditing] = useState(false);
-  const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
-  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const latestTitle = useRef(note.title);
-  const queuedTitle = useRef(note.title);
-
-  useEffect(() => {
-    if (!isEditing || !document.hasFocus()) {
-      setTitle(note.title);
-      latestTitle.current = note.title;
-      queuedTitle.current = note.title;
-    }
-  }, [isEditing, note.title]);
-
-  async function persist(nextTitle: string) {
-    if (nextTitle === queuedTitle.current) return;
-    queuedTitle.current = nextTitle;
-    try {
-      await updateNoteTitle(note.id, nextTitle);
-      setSaveState("saved");
-    } catch {
-      setSaveState("error");
-    }
-  }
-
-  function flush() {
-    clearTimeout(saveTimer.current);
-    void persist(latestTitle.current);
-  }
-
-  useEffect(() => {
-    const flushWhenHidden = () => {
-      if (document.visibilityState === "hidden") flush();
-    };
-    window.addEventListener("pagehide", flush);
-    document.addEventListener("visibilitychange", flushWhenHidden);
-    return () => {
-      window.removeEventListener("pagehide", flush);
-      document.removeEventListener("visibilitychange", flushWhenHidden);
-      flush();
-    };
-  }, [note.id]);
-
-  function save(nextTitle: string, delay = 400) {
-    clearTimeout(saveTimer.current);
-    latestTitle.current = nextTitle;
-    setSaveState("saving");
-    saveTimer.current = setTimeout(() => void persist(nextTitle), delay);
-  }
+  const { value, save: saveDraft, saveState, flush } = useNoteDraft(note.id, note.id, { title: note.title });
+  const title = value.title;
+  const save = (title: string) => saveDraft({ title });
 
   return (
     <div>
@@ -164,14 +116,10 @@ function NoteTitleEditor({ note }: { note: Note }) {
         className="h-auto min-w-0 border-0 bg-transparent px-0 py-1 text-3xl font-semibold tracking-[-0.045em] shadow-none focus-visible:ring-0 sm:text-4xl"
         aria-label="Note title"
         value={title}
-        onFocus={() => setIsEditing(true)}
         onChange={(event) => {
-          setTitle(event.target.value);
           save(event.target.value);
         }}
-        onBlur={(event) => {
-          setIsEditing(false);
-          latestTitle.current = event.target.value;
+        onBlur={() => {
           flush();
         }}
       />
@@ -189,8 +137,8 @@ function NoteTitleEditor({ note }: { note: Note }) {
         {saveState === "saving"
           ? "Saving title"
           : saveState === "error"
-            ? "Save failed"
-            : "Title saved"}
+            ? "Retrying title save"
+            : "Title saved on device"}
       </span>
     </div>
   );
@@ -273,56 +221,10 @@ function PlainNoteEditor({
   block: NoteBlock;
   view: "write" | "preview";
 }) {
-  const [content, setContent] = useState(block.answer);
-  const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
-  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const { value, save: saveDraft, saveState, flush } = useNoteDraft(block.id, block.noteId, { question: "", answer: block.answer });
+  const content = value.answer;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const latestContent = useRef(block.answer);
-  const queuedContent = useRef(block.answer);
-
-  useEffect(() => {
-    if (document.activeElement !== textareaRef.current) {
-      setContent(block.answer);
-      latestContent.current = block.answer;
-      queuedContent.current = block.answer;
-    }
-  }, [block.answer]);
-
-  async function persist(nextContent: string) {
-    if (nextContent === queuedContent.current) return;
-    queuedContent.current = nextContent;
-    try {
-      await updateNoteBlock(block.id, { question: "", answer: nextContent });
-      setSaveState("saved");
-    } catch {
-      setSaveState("error");
-    }
-  }
-
-  function flush() {
-    clearTimeout(saveTimer.current);
-    void persist(latestContent.current);
-  }
-
-  useEffect(() => {
-    const flushWhenHidden = () => {
-      if (document.visibilityState === "hidden") flush();
-    };
-    window.addEventListener("pagehide", flush);
-    document.addEventListener("visibilitychange", flushWhenHidden);
-    return () => {
-      window.removeEventListener("pagehide", flush);
-      document.removeEventListener("visibilitychange", flushWhenHidden);
-      flush();
-    };
-  }, [block.id]);
-
-  function save(nextContent: string, delay = 450) {
-    clearTimeout(saveTimer.current);
-    latestContent.current = nextContent;
-    setSaveState("saving");
-    saveTimer.current = setTimeout(() => void persist(nextContent), delay);
-  }
+  const save = (answer: string) => saveDraft({ question: "", answer });
 
   function replaceSelection(before: string, after = "", placeholder = "text") {
     const textarea = textareaRef.current;
@@ -331,7 +233,6 @@ function PlainNoteEditor({
     const end = textarea.selectionEnd;
     const selected = content.slice(start, end) || placeholder;
     const nextContent = `${content.slice(0, start)}${before}${selected}${after}${content.slice(end)}`;
-    setContent(nextContent);
     save(nextContent);
     window.requestAnimationFrame(() => {
       textarea.focus();
@@ -350,7 +251,6 @@ function PlainNoteEditor({
     const selection = content.slice(lineStart, lineEnd) || "Item";
     const replacement = selection.split("\n").map((line) => `${prefix}${line}`).join("\n");
     const nextContent = `${content.slice(0, lineStart)}${replacement}${content.slice(lineEnd)}`;
-    setContent(nextContent);
     save(nextContent);
     window.requestAnimationFrame(() => {
       textarea.focus();
@@ -363,7 +263,6 @@ function PlainNoteEditor({
     if (!textarea) return;
     const start = textarea.selectionStart;
     const nextContent = `${content.slice(0, start)}${text}${content.slice(textarea.selectionEnd)}`;
-    setContent(nextContent);
     save(nextContent);
     window.requestAnimationFrame(() => {
       textarea.focus();
@@ -403,7 +302,7 @@ function PlainNoteEditor({
               </div>
               <span className={`me-1 hidden items-center gap-1 font-mono text-[8px] uppercase tracking-wide sm:flex ${saveState === "error" ? "text-destructive" : "text-muted-foreground"}`} aria-live="polite">
                 {saveState === "saving" ? <LoaderCircle className="size-3 animate-spin" /> : <Check className="size-3" />}
-                {saveState}
+                {saveState === "saved" ? "Saved on device" : saveState === "saving" ? "Saving…" : "Retrying save"}
               </span>
             </>
           ) : (
@@ -418,7 +317,6 @@ function PlainNoteEditor({
             placeholder={"Write naturally with Markdown…\n\n## A heading\n- A useful point\n- Another point\n\n```\ncode belongs here\n```"}
             value={content}
             onChange={(event) => {
-              setContent(event.target.value);
               save(event.target.value);
             }}
             onBlur={flush}
@@ -444,64 +342,13 @@ function QaBlockEditor({
   canDelete: boolean;
   view: "edit" | "preview";
 }) {
-  const [question, setQuestion] = useState(block.question);
-  const [answer, setAnswer] = useState(block.answer);
-  const [isEditing, setIsEditing] = useState(false);
+  const { value, save: saveDraft, saveState, flush } = useNoteDraft(block.id, block.noteId, { question: block.question, answer: block.answer });
+  const { question, answer } = value;
   const [questionExpanded, setQuestionExpanded] = useState(false);
   const [answerExpanded, setAnswerExpanded] = useState(false);
-  const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
-  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const latestValues = useRef({ question: block.question, answer: block.answer });
-  const queuedValues = useRef(`${block.question}\u0000${block.answer}`);
   const questionId = `question-${block.id}`;
   const answerId = `answer-${block.id}`;
-
-  useEffect(() => {
-    if (!isEditing || !document.hasFocus()) {
-      setQuestion(block.question);
-      setAnswer(block.answer);
-      latestValues.current = { question: block.question, answer: block.answer };
-      queuedValues.current = `${block.question}\u0000${block.answer}`;
-    }
-  }, [block.answer, block.question, isEditing]);
-
-  async function persist(nextQuestion: string, nextAnswer: string) {
-    const signature = `${nextQuestion}\u0000${nextAnswer}`;
-    if (signature === queuedValues.current) return;
-    queuedValues.current = signature;
-    try {
-      await updateNoteBlock(block.id, { question: nextQuestion, answer: nextAnswer });
-      setSaveState("saved");
-    } catch {
-      setSaveState("error");
-    }
-  }
-
-  function flush() {
-    clearTimeout(saveTimer.current);
-    const latest = latestValues.current;
-    void persist(latest.question, latest.answer);
-  }
-
-  useEffect(() => {
-    const flushWhenHidden = () => {
-      if (document.visibilityState === "hidden") flush();
-    };
-    window.addEventListener("pagehide", flush);
-    document.addEventListener("visibilitychange", flushWhenHidden);
-    return () => {
-      window.removeEventListener("pagehide", flush);
-      document.removeEventListener("visibilitychange", flushWhenHidden);
-      flush();
-    };
-  }, [block.id]);
-
-  function save(nextQuestion: string, nextAnswer: string, delay = 500) {
-    clearTimeout(saveTimer.current);
-    latestValues.current = { question: nextQuestion, answer: nextAnswer };
-    setSaveState("saving");
-    saveTimer.current = setTimeout(() => void persist(nextQuestion, nextAnswer), delay);
-  }
+  const save = (question: string, answer: string) => saveDraft({ question, answer });
 
   return (
     <Card className="group overflow-hidden border-white/8 bg-card/72 py-0 shadow-xl shadow-black/10 backdrop-blur-xl transition-colors hover:border-primary/25">
@@ -591,13 +438,10 @@ function QaBlockEditor({
               className={`${questionExpanded ? "h-80 resize-y overflow-auto" : "h-36 resize-none overflow-hidden"} field-sizing-fixed border-0 bg-black/20 leading-6 shadow-inner shadow-black/10 focus-visible:ring-primary/35`}
               placeholder="What do you want to remember?"
               value={question}
-              onFocus={() => setIsEditing(true)}
               onChange={(event) => {
-                setQuestion(event.target.value);
                 save(event.target.value, answer);
               }}
               onBlur={() => {
-                setIsEditing(false);
                 flush();
               }}
             />
@@ -624,13 +468,10 @@ function QaBlockEditor({
               className={`${answerExpanded ? "h-80 resize-y overflow-auto" : "h-36 resize-none overflow-hidden"} field-sizing-fixed border-0 bg-black/20 leading-6 shadow-inner shadow-black/10 focus-visible:ring-primary/35`}
               placeholder="Write the answer in your own words…"
               value={answer}
-              onFocus={() => setIsEditing(true)}
               onChange={(event) => {
-                setAnswer(event.target.value);
                 save(question, event.target.value);
               }}
               onBlur={() => {
-                setIsEditing(false);
                 flush();
               }}
             />
@@ -908,7 +749,7 @@ export function NoteEditor({
                           : "bg-amber-300"
                     }`}
                   />
-                  {note.syncStatus}
+                  {note.syncStatus === "synced" ? "Synced" : note.syncStatus === "conflict" ? "Sync conflict" : "Waiting for cloud sync"}
                 </span>
               </div>
             </div>

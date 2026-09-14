@@ -7,6 +7,7 @@ import type {
   OutboxMutation,
 } from "@/domain/models";
 import { db } from "@/lib/db/database";
+import { flushNoteDrafts, pendingDraftEntities } from "@/lib/db/note-drafts";
 import { createClientUuid } from "@/lib/client-uuid";
 import { API_ROOT, isTauriRuntime, platformFetch } from "@/lib/platform-fetch";
 
@@ -242,6 +243,7 @@ export async function synchronizeVault(
   userId: string,
 ): Promise<{ pushed: number; pulled: number }> {
   const vault = db;
+  await flushNoteDrafts(vault.name);
   const pending = (await vault.outbox.toArray()).sort((left, right) => {
     const orderDifference = mutationSyncOrder(left) - mutationSyncOrder(right);
     if (orderDifference !== 0) return orderDifference;
@@ -406,6 +408,7 @@ async function applySnapshot(
     async () => {
       const pending = await vault.outbox.toArray();
       const pendingKeys = new Set(pending.map((item) => `${item.entityType}:${item.entityId}`));
+      for (const key of pendingDraftEntities(vault.name)) pendingKeys.add(key);
 
       const collections = (snapshot.collections ?? [])
         .filter((item) => !pendingKeys.has(`collection:${item.id}`))
