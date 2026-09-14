@@ -87,8 +87,10 @@ export async function flushDraft(key: string): Promise<void> {
   if (!draft) return;
   pending.set(key, draft);
   const task = (async () => {
-    // A separate handle keeps a delayed save bound to its original vault after sign-out.
-    const vault = new ChatSaverDatabase(draft.vault);
+    // Reuse the open connection during typing; a delayed save after a vault switch
+    // gets its own handle so it can never write into the newly selected account.
+    const ownsVault = db.name !== draft.vault || !db.isOpen();
+    const vault = ownsVault ? new ChatSaverDatabase(draft.vault) : db;
     try {
       if ("title" in draft.value) await updateNoteTitle(draft.id, draft.value.title, vault);
       else await updateNoteBlock(draft.id, draft.value, vault);
@@ -105,7 +107,7 @@ export async function flushDraft(key: string): Promise<void> {
       schedule(key, 2_000);
       throw error;
     } finally {
-      vault.close();
+      if (ownsVault) vault.close();
       running.delete(key);
       notify(key);
     }

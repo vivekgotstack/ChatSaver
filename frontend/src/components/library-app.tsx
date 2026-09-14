@@ -1820,14 +1820,15 @@ export function LibraryApp({
         {!isFocusMode ? <header className="flex h-16 shrink-0 items-center border-b border-white/8 bg-black/25 px-2 backdrop-blur-2xl sm:px-5">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-lg" className="me-2" aria-label={isSidebarOpen ? "Close file sidebar" : "Open file sidebar"} onClick={toggleSidebar}>
-                {isSidebarOpen ? <PanelLeftClose /> : <PanelLeftOpen />}
+              <Button variant="ghost" size="icon-lg" className="me-2 shrink-0" aria-label="Toggle file sidebar" onClick={toggleSidebar}>
+                <PanelLeftOpen className="lg:hidden" />
+                {isSidebarOpen ? <PanelLeftClose className="hidden lg:block" /> : <PanelLeftOpen className="hidden lg:block" />}
               </Button>
             </TooltipTrigger>
             <TooltipContent>{isSidebarOpen ? "Close sidebar" : "Open sidebar"}</TooltipContent>
           </Tooltip>
           <Sheet open={isMobileLibraryOpen} onOpenChange={setIsMobileLibraryOpen}>
-            <SheetContent side="left" className="w-screen max-w-none border-e-white/10 p-0 sm:w-[390px]"><SheetHeader className="sr-only"><SheetTitle>File sidebar</SheetTitle><SheetDescription>Browse notes, filters, and collections.</SheetDescription></SheetHeader><LibrarySidebar key={vaultKey} {...mobileSidebarProps} /></SheetContent>
+            <SheetContent side="left" showCloseButton={false} className="w-[calc(100vw-3rem)] max-w-[390px] border-e-white/10 p-0"><SheetHeader className="sr-only"><SheetTitle>File sidebar</SheetTitle><SheetDescription>Browse notes, filters, and collections. Tap outside or press Escape to close.</SheetDescription></SheetHeader><LibrarySidebar key={vaultKey} {...mobileSidebarProps} /></SheetContent>
           </Sheet>
 
           <Link className="flex items-center gap-2.5" href="/" aria-label="ChatSaver home">

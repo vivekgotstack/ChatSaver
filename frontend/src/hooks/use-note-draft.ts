@@ -11,17 +11,23 @@ export function useNoteDraft<T extends DraftValue>(id: string, noteId: string, r
   const [value, setValue] = useState<T>(() => (readDraft(key)?.value as T | undefined) ?? remote);
   const latest = useRef(value);
   const [saveState, setSaveState] = useState(() => draftState(key));
-  const signature = JSON.stringify(remote);
+  const remoteTitle = "title" in remote ? remote.title : undefined;
+  const remoteQuestion = "question" in remote ? remote.question : undefined;
+  const remoteAnswer = "answer" in remote ? remote.answer : undefined;
 
   useEffect(() => {
     if (readDraft(key)) return;
-    const incoming = JSON.parse(signature) as T;
+    const incoming = (remoteTitle !== undefined
+      ? { title: remoteTitle }
+      : { question: remoteQuestion ?? "", answer: remoteAnswer ?? "" }) as T;
     // A normalized DB echo must not remove spaces while the title is being typed.
     if ("title" in incoming && "title" in latest.current
       && incoming.title === (latest.current.title.trim() || "Untitled note")) return;
+    if ("answer" in incoming && "answer" in latest.current
+      && incoming.question === latest.current.question && incoming.answer === latest.current.answer) return;
     latest.current = incoming;
     setValue(incoming);
-  }, [key, signature]);
+  }, [key, remoteTitle, remoteQuestion, remoteAnswer]);
 
   useEffect(() => {
     const flush = () => { void flushDraft(key).catch(() => {}); };

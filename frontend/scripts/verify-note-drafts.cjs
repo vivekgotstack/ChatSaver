@@ -12,7 +12,7 @@ const committed = new Map();
 let sequence = 0;
 let beforeWrite = async () => {};
 const database = {
-  db: { name: "guest" },
+  db: { name: "guest", isOpen: () => true },
   ChatSaverDatabase: class { constructor(name) { this.name = name; } close() {} },
   updateNoteTitle: async (id, title, vault) => { await beforeWrite(); committed.set(`${vault.name}:${id}`, { title }); },
   updateNoteBlock: async (id, value, vault) => { await beforeWrite(); committed.set(`${vault.name}:${id}`, value); },
