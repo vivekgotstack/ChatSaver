@@ -481,7 +481,7 @@ interface LibrarySidebarProps {
 
 function LibraryLoading() {
   return (
-    <div className="relative min-h-dvh overflow-hidden p-0 lg:p-3">
+    <div className="workspace-shell relative h-dvh overflow-hidden p-0 lg:p-3">
       <div className="paint-backdrop" aria-hidden="true" />
       <div className="oil-grain" aria-hidden="true" />
       <div className="app-surface relative z-10 flex h-dvh overflow-hidden border-white/8 lg:h-[calc(100dvh-1.5rem)] lg:rounded-[1.75rem] lg:border">
@@ -1820,7 +1820,7 @@ export function LibraryApp({
   }
 
   return (
-    <div className={`relative min-h-dvh overflow-hidden ${isFocusMode ? "p-0" : "p-0 lg:p-3"}`}>
+    <div className={`workspace-shell relative h-dvh overflow-hidden ${isFocusMode ? "p-0" : "p-0 lg:p-3"}`}>
       <div className="paint-backdrop" aria-hidden="true" />
       <div className="oil-grain" aria-hidden="true" />
 

@@ -73,7 +73,7 @@
   }
 
   body {
-    @apply min-h-screen bg-background text-foreground antialiased;
+    @apply min-h-dvh bg-background text-foreground antialiased;
     margin: 0;
     letter-spacing: -0.008em;
     background: #070506;
@@ -113,6 +113,29 @@
 #route-frame {
   min-height: 100dvh;
   transition: opacity 180ms ease;
+}
+
+/* Only the workspace owns the viewport; its note and sidebar scroll inside it.
+   Allowing the document to scroll exposes the fixed artwork below the surface
+   when mobile browser controls resize the visible viewport. */
+html:has(.workspace-shell),
+body:has(.workspace-shell) {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior-y: none;
+}
+
+#route-frame:has(.workspace-shell) {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace-shell .editor-scrollbar,
+.workspace-shell [data-slot="scroll-area-viewport"],
+.workspace-shell .library-collections-scroll {
+  overscroll-behavior-y: contain;
 }
 
 .route-transition-curtain {
