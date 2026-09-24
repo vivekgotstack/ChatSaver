@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useDeferredValue, useEffect, useEffectEvent, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   Archive,
@@ -50,7 +50,6 @@ import type {
 } from "@/domain/models";
 import { NoteEditor } from "@/components/note-editor";
 import { MobileNoteList } from "@/components/mobile-note-list";
-import { AccountDialog } from "@/components/account-dialog";
 import { ConnectedIntegrationsShortcut } from "@/components/connected-integrations-shortcut";
 import { PrivateVaultShortcut } from "@/components/private-vault-shortcut";
 import {
@@ -148,6 +147,10 @@ const ImportDialog = dynamic(
   () => import("@/components/import-dialog").then((module) => module.ImportDialog),
   { ssr: false },
 );
+const AccountDialog = dynamic(
+  () => import("@/components/account-dialog").then((module) => module.AccountDialog),
+  { ssr: false },
+);
 const VaultDialog = dynamic(
   () => import("@/components/vault-dialog").then((module) => module.VaultDialog),
   { ssr: false },
@@ -156,6 +159,13 @@ const DocumentToPdfDialog = dynamic(
   () => import("@/components/document-to-pdf-dialog").then((module) => module.DocumentToPdfDialog),
   { ssr: false },
 );
+
+function MountOnFirstOpen({ open, children }: { open: boolean; children: ReactNode }) {
+  const [mounted, setMounted] = useState(open);
+  useEffect(() => { if (open) setMounted(true); }, [open]);
+  // Defer code and database subscriptions, then preserve dialog state on close.
+  return open || mounted ? children : null;
+}
 
 const PAGE_SIZE = 250;
 const FALLBACK_SYNC_INTERVAL_MS = 2 * 60 * 1_000;
@@ -1795,17 +1805,17 @@ export function LibraryApp({
           />
         ) : null}
         <NewNoteDialog open={isNewNoteOpen} onOpenChange={setIsNewNoteOpen} onCreate={createNoteWithFormat} />
-        <VaultDialog
+        <MountOnFirstOpen open={isVaultOpen}><VaultDialog
           open={isVaultOpen}
           onOpenChange={setIsVaultOpen}
           accessToken={session?.accessToken}
           vaultKey={vaultKey}
           onConvertToPdf={() => setIsPdfConverterOpen(true)}
-        />
+        /></MountOnFirstOpen>
         {isPdfConverterOpen ? (
           <DocumentToPdfDialog open onOpenChange={setIsPdfConverterOpen} />
         ) : null}
-        <AccountDialog
+        <MountOnFirstOpen open={isAccountOpen}><AccountDialog
           open={isAccountOpen}
           session={session}
           syncing={syncState === "syncing"}
@@ -1814,7 +1824,7 @@ export function LibraryApp({
           onLoggedOut={loggedOut}
           onSync={() => void runSync()}
           onConvertToPdf={() => setIsPdfConverterOpen(true)}
-        />
+        /></MountOnFirstOpen>
       </div>
     );
   }
@@ -2068,19 +2078,19 @@ export function LibraryApp({
         </AlertDialogContent>
       </AlertDialog>
 
-      <VaultDialog
+      <MountOnFirstOpen open={isVaultOpen}><VaultDialog
         open={isVaultOpen}
         onOpenChange={setIsVaultOpen}
         accessToken={session?.accessToken}
         vaultKey={vaultKey}
         onConvertToPdf={() => setIsPdfConverterOpen(true)}
-      />
+      /></MountOnFirstOpen>
 
       {isPdfConverterOpen ? (
         <DocumentToPdfDialog open onOpenChange={setIsPdfConverterOpen} />
       ) : null}
 
-      <AccountDialog
+      <MountOnFirstOpen open={isAccountOpen}><AccountDialog
         open={isAccountOpen}
         session={session}
         syncing={syncState === "syncing"}
@@ -2089,7 +2099,7 @@ export function LibraryApp({
         onLoggedOut={loggedOut}
         onSync={() => void runSync()}
         onConvertToPdf={() => setIsPdfConverterOpen(true)}
-      />
+      /></MountOnFirstOpen>
 
       <CommandDialog
         open={isCommandOpen}

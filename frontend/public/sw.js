@@ -17,13 +17,15 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))),
+    Promise.all([
+      caches.keys().then((keys) =>
+        Promise.all(keys.filter((key) => key.startsWith("chatsaver-shell-") && key !== CACHE_NAME).map((key) => caches.delete(key))),
       ),
+      // Start fetching HTML while the worker itself is still starting up.
+      self.registration.navigationPreload?.enable().catch(() => undefined),
+      self.clients.claim(),
+    ]),
   );
-  self.clients.claim();
 });
 
 self.addEventListener("fetch", (event) => {
@@ -32,19 +34,21 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
 
   if (event.request.mode === "navigate") {
+    const response = Promise.resolve(event.preloadResponse)
+      .catch(() => undefined)
+      .then((preloaded) => preloaded ?? fetch(event.request));
+    // Return the network stream immediately. Cache writes must not delay the
+    // first paint or turn a successful page load into an offline fallback.
+    event.waitUntil(response.then(async (fresh) => {
+      if (!fresh.ok) return;
+      const copy = fresh.clone();
+      const cache = await caches.open(CACHE_NAME);
+      await cache.put(event.request, copy);
+    }).catch(() => undefined));
     event.respondWith(
-      (async () => {
-        try {
-          const response = await fetch(event.request);
-          if (response.ok) {
-            const cache = await caches.open(CACHE_NAME);
-            await cache.put(event.request, response.clone());
-          }
-          return response;
-        } catch {
-          return (await caches.match(event.request)) ?? caches.match("/");
-        }
-      })(),
+      response.catch(async () =>
+        (await caches.match(event.request)) ?? (await caches.match("/")) ?? Response.error(),
+      ),
     );
     return;
   }
