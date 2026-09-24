@@ -205,6 +205,14 @@ function readWorkspaceState(vaultKey: string): StoredWorkspaceState | undefined 
   }
 }
 
+function openInitialLocalVault(): string {
+  // Account-vault selection must happen before live queries subscribe. Opening
+  // the guest vault first and closing it in the session-restore effect makes
+  // its pending IndexedDB request reject and briefly shows the fatal screen.
+  if (typeof window === "undefined") return db.name;
+  return reopenLocalAccountVault();
+}
+
 type DesktopPlatform = "windows" | "macos";
 
 const DESKTOP_DOWNLOADS: Record<DesktopPlatform, string> = {
@@ -1094,7 +1102,7 @@ export function LibraryApp({
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [session, setSession] = useState<AuthSession>();
-  const [vaultKey, setVaultKey] = useState(() => db.name);
+  const [vaultKey, setVaultKey] = useState(openInitialLocalVault);
   const [databaseState, setDatabaseState] = useState<
     { status: "loading" | "ready" } | { status: "error"; detail: string }
   >({ status: "loading" });
@@ -1269,8 +1277,9 @@ export function LibraryApp({
 
   useEffect(() => {
     let active = true;
+    const openingDatabase = db;
     const timeout = window.setTimeout(() => {
-      if (active) {
+      if (active && db === openingDatabase) {
         setDatabaseState({
           status: "error",
           detail: "The browser did not finish opening its local database.",
@@ -1282,16 +1291,15 @@ export function LibraryApp({
       .count()
       .then(() => flushNoteDrafts(vaultKey))
       .then(() => {
-        if (active) setDatabaseState({ status: "ready" });
+        if (active && db === openingDatabase) setDatabaseState({ status: "ready" });
       })
       .catch((error: unknown) => {
+        if (!active || db !== openingDatabase) return;
         console.error("IndexedDB initialization failed", error);
-        if (active) {
-          setDatabaseState({
-            status: "error",
-            detail: "The browser could not access its local database.",
-          });
-        }
+        setDatabaseState({
+          status: "error",
+          detail: "The browser could not access its local database.",
+        });
       })
       .finally(() => window.clearTimeout(timeout));
 
