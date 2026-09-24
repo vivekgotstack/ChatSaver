@@ -5,6 +5,7 @@ import { ServiceWorkerRegistration } from "@/components/service-worker-registrat
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DesktopContextMenu } from "@/components/desktop-context-menu";
+import { MobileInstallPrompt } from "@/components/mobile-install-prompt";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -73,6 +74,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <div id="route-frame">{children}</div>
           <DesktopContextMenu />
           <ServiceWorkerRegistration />
+          <MobileInstallPrompt />
           <Toaster position="bottom-right" richColors closeButton />
         </TooltipProvider>
       </body>
