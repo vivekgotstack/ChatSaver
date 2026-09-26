@@ -53,7 +53,7 @@ const child = spawn(process.execPath, [nextCli, "build"], {
     ...process.env,
     TAURI_BUILD: "true",
     NEXT_PUBLIC_API_ORIGIN:
-      process.env.TAURI_API_ORIGIN ?? "https://chatsaver.viveknigam.co.in",
+      process.env.TAURI_API_ORIGIN ?? "https://chatsaver.stackorcs.com",
   },
   stdio: "inherit",
 });
