@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main, master ]
 
+concurrency:
+  group: playwright-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     timeout-minutes: 60
@@ -35,11 +39,15 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
+          cache: maven
+          cache-dependency-path: backend/pom.xml
 
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Build and Start Backend
         env:
@@ -52,14 +60,14 @@ jobs:
           SMTP_PASS: ci
         run: |
           cd backend
-          mvn clean package -DskipTests
+          mvn -B -ntp package -DskipTests
           nohup java -jar target/*.jar > ../backend.log 2>&1 &
           cd ..
 
       - name: Install Frontend Dependencies
         run: |
           cd frontend
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
 
       - name: Install Playwright Browsers
         run: |
