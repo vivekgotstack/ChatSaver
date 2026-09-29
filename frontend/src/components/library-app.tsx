@@ -225,10 +225,10 @@ function openInitialLocalVault(): string {
 
 type DesktopPlatform = "windows" | "macos";
 
+const WINDOWS_STORE_URL = "https://aka.ms/AA13oz3l";
+
 const DESKTOP_DOWNLOADS: Record<DesktopPlatform, string> = {
-  windows:
-    process.env.NEXT_PUBLIC_WINDOWS_DOWNLOAD_URL
-    ?? "/downloads/ChatSaver.exe",
+  windows: WINDOWS_STORE_URL,
   macos:
     process.env.NEXT_PUBLIC_MACOS_DOWNLOAD_URL
     ?? "/downloads/ChatSaver.dmg",
@@ -263,7 +263,8 @@ function DesktopInstallButton({ compact = false }: { compact?: boolean }) {
 
   if (!platform) return null;
 
-  const platformLabel = platform === "windows" ? "Windows" : "macOS";
+  const isWindowsStore = platform === "windows";
+  const platformLabel = isWindowsStore ? "Windows" : "macOS";
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -274,9 +275,14 @@ function DesktopInstallButton({ compact = false }: { compact?: boolean }) {
             compact ? "h-8 px-2.5 text-[11px]" : "h-9 px-3 text-xs"
           }`}
         >
-          <a href={DESKTOP_DOWNLOADS[platform]} download>
+          <a
+            href={DESKTOP_DOWNLOADS[platform]}
+            target={isWindowsStore ? "_blank" : undefined}
+            rel={isWindowsStore ? "noreferrer" : undefined}
+            aria-label={isWindowsStore ? "Get ChatSaver for Windows from Microsoft Store" : "Install ChatSaver on macOS"}
+          >
             <Download className="text-primary transition-transform duration-200 group-hover/install:translate-y-0.5" />
-            Install on {platformLabel}
+            {isWindowsStore ? (compact ? "Get for Windows" : "Get ChatSaver for Windows") : `Install on ${platformLabel}`}
           </a>
         </Button>
       </TooltipTrigger>
@@ -290,7 +296,9 @@ function DesktopInstallButton({ compact = false }: { compact?: boolean }) {
           Your library, in its own workspace.
         </span>
         <span className="mt-1 block text-[11px] leading-5 text-white/58">
-          Launch ChatSaver directly from your desktop and keep the same private, local-first vault.
+          {isWindowsStore
+            ? "Install the official ChatSaver app securely from Microsoft Store."
+            : "Launch ChatSaver directly from your desktop and keep the same private, local-first vault."}
         </span>
       </TooltipContent>
     </Tooltip>
