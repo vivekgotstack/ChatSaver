@@ -6,6 +6,7 @@ import { ChecklistNoteEditor } from "@/components/checklist-note-editor";
 import type { CSSProperties } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { normalizeChatMarkdown } from "@/lib/import/chat-markdown";
 import {
   ArrowUpRight,
   Archive,
@@ -146,7 +147,7 @@ function NoteTitleEditor({ note }: { note: Note }) {
 }
 
 function MarkdownView({ content, empty }: { content: string; empty: string }) {
-  const normalized = content.trim();
+  const normalized = normalizeChatMarkdown(content).trim();
   if (!normalized) {
     return <p className="py-8 text-sm italic text-muted-foreground">{empty}</p>;
   }

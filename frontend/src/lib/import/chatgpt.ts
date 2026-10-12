@@ -4,6 +4,7 @@ import type {
   NormalizedMessage,
 } from "@/domain/models";
 import { toMarkdownText } from "@/lib/plain-text";
+import { normalizeChatMarkdown } from "@/lib/import/chat-markdown";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -25,7 +26,7 @@ function toIsoDate(value: unknown): string | undefined {
 }
 
 function extractText(message: JsonRecord): string {
-  return toMarkdownText(message.content);
+  return normalizeChatMarkdown(toMarkdownText(message.content));
 }
 
 function extractRole(message: JsonRecord): MessageRole | undefined {
